@@ -32,6 +32,7 @@ mlstabilitytest/ml_data/Ef/allMP_single/
 
 # Generated output files (regeneratable)
 interference_scores.csv
+interference_scores_*.csv
 interference_summary.csv
 propagation_circles.png
 propagation_comparison.png
