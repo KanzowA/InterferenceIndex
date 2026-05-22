@@ -19,17 +19,27 @@ except ImportError:
 base_path = dirname(dirname(abspath(__file__)))
 data_path = join(base_path, "mp_data", "data")
 
-# Dictionary of available models
-model_dictionary = {"Deml": lambda target: MatminerModel('Deml', target),
-                    "ElFrac": lambda target: MatminerModel('ElFrac', target),
-                    "Magpie": lambda target: MatminerModel('Magpie', target),
-                    "Meredig": lambda target: MatminerModel('Meredig', target),
-                    **( {"ElemNet": lambda target: ElemNet(target)} if ElemNet else {} ),
-                    **( {"AutoMat": lambda target: AutoMat(target)} if AutoMat else {} ),
-                    # γ-loss NN — lam=0.0 gives a plain MSE-ElFrac baseline;
-                    # change lam (0.05, 0.1, 0.2 …) to sweep the γ²-regularisation.
-                    "GammaLoss": lambda target: GammaLossNN(target, lam=0.1),
-                    }
+# Dictionary of available models — supports dynamic GammaLoss_<lam> names,
+# e.g. "GammaLoss_0.0", "GammaLoss_0.1", "GammaLoss_0.25", "GammaLoss_0.5"
+class _ModelDict(dict):
+    def __missing__(self, key):
+        if key.startswith("GammaLoss_"):
+            try:
+                lam = float(key.split("_", 1)[1])
+                return lambda target, l=lam: GammaLossNN(target, lam=l)
+            except ValueError:
+                pass
+        raise KeyError("Unknown model '{}'. Available: {}".format(
+            key, list(self.keys()) + ["GammaLoss_<lam>"]))
+
+model_dictionary = _ModelDict({
+    "Deml":     lambda target: MatminerModel('Deml', target),
+    "ElFrac":   lambda target: MatminerModel('ElFrac', target),
+    "Magpie":   lambda target: MatminerModel('Magpie', target),
+    "Meredig":  lambda target: MatminerModel('Meredig', target),
+    **( {"ElemNet": lambda target: ElemNet(target)} if ElemNet else {} ),
+    **( {"AutoMat": lambda target: AutoMat(target)} if AutoMat else {} ),
+})
 
 # List of available target properties
 target_list = ["Ed", "Ef"]

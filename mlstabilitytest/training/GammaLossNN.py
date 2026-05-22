@@ -246,14 +246,14 @@ class GammaLossNN(MLModel):
             # -- MSE term
             mse_loss = (delta ** 2).mean()
 
-            # -- γ² term
-            if has_rxn and self.lam > 0:
-                # c[r, k] = ν_{r,k} · δ_{compound(r,k)}   (zero where masked out)
-                c       = R_coeff * delta[R_idx]   # (M, K)  — broadcasts
-                c       = c * R_mask               # zero padding
-                num     = c.sum(dim=1) ** 2        # (M,)  — (Σ ν_k δ_k)²
-                den     = (c ** 2).sum(dim=1) + self.eps   # (M,)
-                gamma_loss = (num / den).mean()
+            # -- γ² term (always computed for diagnostics, only enters loss if lam > 0)
+            if has_rxn:
+                with torch.no_grad() if self.lam == 0 else torch.enable_grad():
+                    c          = R_coeff * delta[R_idx]   # (M, K)
+                    c          = c * R_mask               # zero padding
+                    num        = c.sum(dim=1) ** 2        # (M,)
+                    den        = (c ** 2).sum(dim=1) + self.eps
+                    gamma_loss = (num / den).mean()
             else:
                 gamma_loss = torch.zeros(1, device=dev).squeeze()
 
