@@ -3,6 +3,7 @@ import json
 from sklearn.model_selection import KFold
 from mlstabilitytest.training.MatminerModel import MatminerModel
 from mlstabilitytest.training.GammaLossNN import GammaLossNN
+from mlstabilitytest.training.EdLossNN import EdLossNN
 
 try:
     from mlstabilitytest.training.ElemNetModel import ElemNet
@@ -29,8 +30,14 @@ class _ModelDict(dict):
                 return lambda target, l=lam: GammaLossNN(target, lam=l)
             except ValueError:
                 pass
+        if key.startswith("EdLoss_"):
+            try:
+                alpha = float(key.split("_", 1)[1])
+                return lambda target, a=alpha: EdLossNN(target, alpha=a)
+            except ValueError:
+                pass
         raise KeyError("Unknown model '{}'. Available: {}".format(
-            key, list(self.keys()) + ["GammaLoss_<lam>"]))
+            key, list(self.keys()) + ["GammaLoss_<lam>", "EdLoss_<alpha>"]))
 
 model_dictionary = _ModelDict({
     "Deml":     lambda target: MatminerModel('Deml', target),

@@ -49,8 +49,13 @@ DATA_DIR = os.path.join(REPO_DIR, "mp_data", "data")
 HULLOUT = os.path.join(DATA_DIR, "hullout.json")
 EF_DFT  = os.path.join(DATA_DIR, "Ef.json")
 
-MODELS = ["ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet",
-          "Roost", "CGCNN", "GammaLoss"]
+# Base Bartel-et-al. models (fixed order)
+MODELS_BASE = ["ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet",
+               "Roost", "CGCNN"]
+
+# GammaLoss_* variants are auto-detected at runtime from the ml_data folder.
+# MODELS is rebuilt in main() — do not edit manually.
+MODELS = list(MODELS_BASE)
 
 EXCLUDE_N1 = True   # set False to keep single-participant reactions
 
@@ -143,7 +148,8 @@ def plot_propagation_circles(results):
         by_model[row["model"]].append(row)
 
     colors = ["steelblue", "darkorange", "forestgreen",
-              "crimson", "mediumpurple", "sienna", "deeppink", "teal"]
+              "crimson", "mediumpurple", "sienna", "deeppink", "teal",
+              "goldenrod", "slateblue", "coral", "mediumseagreen"]
     model_colors = {m: colors[i % len(colors)] for i, m in enumerate(MODELS)}
 
     models_present = [m for m in MODELS if m in by_model]
@@ -235,7 +241,8 @@ def plot_score_vs_error(results, hullout):
         by_model[row["model"]].append(row)
 
     colors = ["steelblue", "darkorange", "forestgreen",
-              "crimson", "mediumpurple", "sienna", "deeppink", "teal"]
+              "crimson", "mediumpurple", "sienna", "deeppink", "teal",
+              "goldenrod", "slateblue", "coral", "mediumseagreen"]
     model_colors = {m: colors[i % len(colors)] for i, m in enumerate(MODELS)}
     models_present = [m for m in MODELS if m in by_model]
     n_models = len(models_present)
@@ -295,6 +302,34 @@ def main():
 
     ML_DIR = os.path.join(REPO_DIR, "ml_data", "Ef", split)
     print(f"Using split: {split}  →  {ML_DIR}\n")
+
+    # ── Auto-detect GammaLoss_* and EdLoss_* variants ─────────────────────────
+    global MODELS
+
+    def _detect_variants(prefix, ml_dir):
+        variants = []
+        if os.path.isdir(ml_dir):
+            for name in os.listdir(ml_dir):
+                if name.startswith(prefix) and os.path.isdir(os.path.join(ml_dir, name)):
+                    try:
+                        float(name.split("_", 1)[1])
+                        variants.append(name)
+                    except ValueError:
+                        pass
+        variants.sort(key=lambda n: float(n.split("_", 1)[1]))
+        return variants
+
+    gamma_variants = _detect_variants("GammaLoss_", ML_DIR)
+    ed_variants    = _detect_variants("EdLoss_",    ML_DIR)
+
+    MODELS = list(MODELS_BASE) + gamma_variants + ed_variants
+
+    if gamma_variants:
+        print(f"Auto-detected GammaLoss variants: {gamma_variants}")
+    if ed_variants:
+        print(f"Auto-detected EdLoss variants:    {ed_variants}")
+    if not gamma_variants and not ed_variants:
+        print("No GammaLoss_* or EdLoss_* variants found in ml_data folder.")
 
     print("Loading DFT reference data …")
     hullout = load_json(HULLOUT)

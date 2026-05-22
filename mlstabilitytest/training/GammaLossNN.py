@@ -1,20 +1,26 @@
 """
-GammaLossNN — ElementFraction MLP trained with a compound-MSE + γ² reaction loss.
+GammaLossNN — ElementFraction MLP trained with a normalised (1−R²) + γ²/N loss.
 
 Loss:
-    L = (1 - lam) * mean_i(δ_i²)  +  lam * mean_r(γ²_r,ε)
+    L = (1 − λ) · MSE_Ef / Var(Y)  +  λ · mean_r( γ²_r / N_r )
 
 where
-    δ_i   = pred_i − y_i                          (per-compound error)
-    γ²_r,ε = (Σ_k ν_k δ_k)² / (Σ_k (ν_k δ_k)² + ε)   (per-reaction γ², stabilised)
+    MSE_Ef / Var(Y)  =  1 − R²                             (normalised Ef error, ∈ [0,1])
+    γ²_r / N_r       =  (Σ_k ν_k δ_k)² / (N_r·(Σ_k (ν_k δ_k)² + ε))
+                                                            (normalised γ², ∈ [0,1])
+    δ_i  = Ef_pred_i − Ef_DFT_i
+    N_r  = number of non-padded members in reaction r
+    Var(Y) = population variance of training Ef values (fixed per fold)
 
-The γ² term is the fraction of individual-error power that leaks into the reaction
-prediction — a scale-invariant measure of error cancellation.  The MSE term keeps
-absolute errors bounded; γ² structures them toward cancellation.
+Both terms live in [0, 1] at initialisation, so λ is a genuine fractional weight
+throughout training — not a threshold that tips gradient dominance from one term
+to the other as MSE decays.
+
+Suggested λ sweep with normalised loss: 0.1, 0.2, 0.3, 0.5, 0.7
 
 Plugs directly into the existing Bartel-et-al. infrastructure:
-    python train_models.py allMP Ef GammaLoss
-    python analyze_models.py            # now includes GammaLoss
+    python train_models.py allMP Ef GammaLoss_0.3
+    python interference_score.py
 """
 
 import re
@@ -233,6 +239,16 @@ class GammaLossNN(MLModel):
         X_t = torch.tensor(X_feat, dtype=torch.float32, device=dev)
         Y_t = torch.tensor(Y,      dtype=torch.float32, device=dev)
 
+        # ---- Normalisation constants (fixed for this fold) ----------------
+        # mse_init : MSE of the untrained network on the training set.
+        #            Normalising by this guarantees the Ef term starts at
+        #            exactly 1.0 at epoch 0, matching γ²/N ≈ 1.0.
+        #            λ is then a genuine fractional weight throughout training.
+        # var_y    : used as a floor so mse_init never collapses to zero.
+        var_y    = Y_t.var(unbiased=False).clamp(min=1e-6)
+        with torch.no_grad():
+            mse_init = ((self._net(X_t) - Y_t) ** 2).mean().clamp(min=var_y)
+
         # ---- Training loop (full-batch) -----------------------------------
         # Full-batch is required: γ² needs to see complete reactions in one
         # forward pass.  68 K compounds × 118 features ≈ 30 MB — fits easily.
@@ -243,17 +259,22 @@ class GammaLossNN(MLModel):
             pred  = self._net(X_t)          # (N_train,)
             delta = pred - Y_t              # per-compound errors
 
-            # -- MSE term
-            mse_loss = (delta ** 2).mean()
+            # -- Normalised MSE term: MSE / MSE_init ∈ [0, 1]
+            #    = 1.0 at epoch 0, → 0 as training improves
+            mse_loss = (delta ** 2).mean() / mse_init
 
-            # -- γ² term (always computed for diagnostics, only enters loss if lam > 0)
+            # -- Normalised γ²/N term ∈ [0, 1]
+            #    γ²_r / N_r  =  (Σ c)² / (N_r · (Σ c² + ε))
+            #    dividing by N_r brings the upper bound to 1 for any
+            #    reaction size, making the term truly scale-invariant.
             if has_rxn:
                 with torch.no_grad() if self.lam == 0 else torch.enable_grad():
-                    c          = R_coeff * delta[R_idx]   # (M, K)
-                    c          = c * R_mask               # zero padding
-                    num        = c.sum(dim=1) ** 2        # (M,)
-                    den        = (c ** 2).sum(dim=1) + self.eps
-                    gamma_loss = (num / den).mean()
+                    c    = R_coeff * delta[R_idx]        # (M, K)
+                    c    = c * R_mask                    # zero padding
+                    N_r  = R_mask.sum(dim=1)             # (M,) real members per reaction
+                    num  = c.sum(dim=1) ** 2             # (M,)
+                    den  = (c ** 2).sum(dim=1) + self.eps
+                    gamma_loss = (num / (N_r * den)).mean()
             else:
                 gamma_loss = torch.zeros(1, device=dev).squeeze()
 
@@ -266,8 +287,8 @@ class GammaLossNN(MLModel):
                 print(
                     f'  [GammaLossNN] epoch {epoch:>4d} | '
                     f'loss={loss.item():.5f}  '
-                    f'mse={mse_loss.item():.5f}  '
-                    f'γ²={gamma_loss.item():.5f}'
+                    f'(1-R²)={mse_loss.item():.5f}  '
+                    f'γ²/N={gamma_loss.item():.5f}'
                 )
 
         self._net.eval()
