@@ -4,8 +4,8 @@ from shutil import copyfile
 
 here = os.path.abspath(os.path.dirname(__file__))
 def main():
-    models = ['ElFrac', 'Meredig', 'Magpie', 'AutoMat', 'ElemNet', 'Roost', 
-              'CGCNN']
+    models = ['ElFrac', 'Meredig', 'Magpie', 'AutoMat', 'ElemNet', 'Roost',
+              'CGCNN', 'GammaLoss']
     experiments = ['LiMnTMO', 'allMP', 'smact',
                    'random1', 'random2', 'random3',
                    'classifier']

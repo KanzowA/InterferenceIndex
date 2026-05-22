@@ -4,7 +4,10 @@ import pandas as pd
 from mlstabilitytest.training.MLModel import MLModel
 from matminer.featurizers.composition import ElementProperty, ElementFraction, Meredig
 from xgboost import XGBRegressor
-from pymatgen import Composition
+try:
+    from pymatgen.core import Composition   # pymatgen >= 2022
+except ImportError:
+    from pymatgen import Composition        # pymatgen < 2022
 
 
 class MatminerModel(MLModel):

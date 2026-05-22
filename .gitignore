@@ -27,6 +27,15 @@ mlstabilitytest/apriori_stability.py
 mlstabilitytest/data/
 mlstabilitytest/training/learning/
 mlstabilitytest/ml_data/Ef/allMP/*/tmp*.json
+mlstabilitytest/ml_data/Ef/allMP/*/ml_input.json
+mlstabilitytest/ml_data/Ef/allMP_single/
+
+# Generated output files (regeneratable)
+interference_scores.csv
+interference_summary.csv
+propagation_circles.png
+propagation_comparison.png
+score_vs_error.png
 mlstabilitytest/analyze_learning.py
 mlstabilitytest/ananlyze_classifiers.py
 mlstabilitytest/old/

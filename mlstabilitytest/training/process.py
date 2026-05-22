@@ -2,8 +2,19 @@ from os.path import dirname, abspath, join
 import json
 from sklearn.model_selection import KFold
 from mlstabilitytest.training.MatminerModel import MatminerModel
-from mlstabilitytest.training.ElemNetModel import ElemNet
-from mlstabilitytest.training.AutoMatModel import AutoMat
+from mlstabilitytest.training.GammaLossNN import GammaLossNN
+
+try:
+    from mlstabilitytest.training.ElemNetModel import ElemNet
+except ImportError:
+    ElemNet = None
+    print("[process.py] ElemNet unavailable (keras/tensorflow not installed)")
+
+try:
+    from mlstabilitytest.training.AutoMatModel import AutoMat
+except ImportError:
+    AutoMat = None
+    print("[process.py] AutoMat unavailable (automatminer not installed)")
 
 base_path = dirname(dirname(abspath(__file__)))
 data_path = join(base_path, "mp_data", "data")
@@ -13,8 +24,11 @@ model_dictionary = {"Deml": lambda target: MatminerModel('Deml', target),
                     "ElFrac": lambda target: MatminerModel('ElFrac', target),
                     "Magpie": lambda target: MatminerModel('Magpie', target),
                     "Meredig": lambda target: MatminerModel('Meredig', target),
-                    "ElemNet": lambda target: ElemNet(target),
-                    "AutoMat": lambda target: AutoMat(target),
+                    **( {"ElemNet": lambda target: ElemNet(target)} if ElemNet else {} ),
+                    **( {"AutoMat": lambda target: AutoMat(target)} if AutoMat else {} ),
+                    # γ-loss NN — lam=0.0 gives a plain MSE-ElFrac baseline;
+                    # change lam (0.05, 0.1, 0.2 …) to sweep the γ²-regularisation.
+                    "GammaLoss": lambda target: GammaLossNN(target, lam=0.1),
                     }
 
 # List of available target properties
@@ -56,6 +70,32 @@ def allMP(model, target):
         predictions = {**predictions, **{labels_test[i]: predictions_this_fold[i] for i, x in enumerate(test_indices)}}
 
     return predictions
+
+
+def allMP_single(model, target, test_size=0.2, random_state=10):
+    """80/20 train/test split — faster iteration than 5-fold CV."""
+    from sklearn.model_selection import train_test_split
+
+    input_file = join(data_path, "hullout.json")
+    print("Reading input data from {}".format(input_file))
+    with open(input_file, 'r') as f:
+        input_data = json.load(f)
+
+    print("Preprocessing data")
+    features, targets, labels = model.preprocess(input_data)
+
+    idx = list(range(len(labels)))
+    train_idx, test_idx = train_test_split(
+        idx, test_size=test_size, random_state=random_state, shuffle=True)
+
+    print("Training on 80/20 split ({} train, {} test)".format(
+        len(train_idx), len(test_idx)))
+    preds = model.fit_and_predict(
+        Xtrain=features[train_idx],
+        Ytrain=targets[train_idx],
+        Xtest=features[test_idx])
+
+    return {labels[test_idx[i]]: preds[i] for i in range(len(test_idx))}
 
 
 def LiMnTMO(model, target):
@@ -147,5 +187,6 @@ def smact(model, target):
 
 # Dictionary of available problem functions
 problem_dictionary = {"allMP": allMP,
+                      "allMP_single": allMP_single,
                       "LiMnTMO": LiMnTMO,
                       "smact": smact}

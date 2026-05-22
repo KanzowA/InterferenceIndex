@@ -1,4 +1,5 @@
 from os.path import dirname, abspath, join
+from os import makedirs
 from sys import argv
 import json
 from mlstabilitytest.training.process import problem_dictionary, target_list, model_dictionary
@@ -50,6 +51,7 @@ def main(argv):
     predictions = train_func(model, target)
 
     print("Training complete, saving predictions to {}".format(output_file))
+    makedirs(join(output_base_path, target, problem, model_name), exist_ok=True)
     with open(output_file, 'w') as f:
         json.dump(predictions, f)
 

@@ -21,9 +21,9 @@ AUTHOR = 'Chris Bartel'
 REQUIRES_PYTHON = '>=3.6.0'
 VERSION = '0.2.0'
 
-REQUIRED = ['numpy', 
+REQUIRED = ['numpy',
             'scipy',
-            'sklearn']
+            'scikit-learn']
 EXTRAS = {'plotting' : ['prettytable',
                          'matplotlib'],
           'training' : ['pandas']}

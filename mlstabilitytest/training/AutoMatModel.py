@@ -7,7 +7,10 @@ from automatminer.preprocessing import FeatureReducer, DataCleaner
 from automatminer.automl import TPOTAdaptor, SinglePipelineAdaptor
 from automatminer.pipeline import MatPipe
 import matminer.featurizers.composition as cf
-from pymatgen import Composition
+try:
+    from pymatgen.core import Composition   # pymatgen >= 2022
+except ImportError:
+    from pymatgen import Composition        # pymatgen < 2022
 
 
 class AutoMat(MLModel):
