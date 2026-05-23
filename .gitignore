@@ -29,6 +29,9 @@ mlstabilitytest/training/learning/
 mlstabilitytest/ml_data/Ef/allMP/*/tmp*.json
 mlstabilitytest/ml_data/Ef/allMP/*/ml_input.json
 mlstabilitytest/ml_data/Ef/allMP_single/
+mlstabilitytest/ml_data/Ed/allMP/*/tmp*.json
+mlstabilitytest/ml_data/Ed/allMP/*/ml_input.json
+mlstabilitytest/ml_data/Ed/allMP_single/
 
 # Generated output files (regeneratable)
 interference_scores.csv
