@@ -2,19 +2,18 @@
 GammaLossNN — ElementFraction MLP trained with a normalised (1−R²) + γ²/N loss.
 
 Loss:
-    L = (1 − λ) · MSE_Ef / Var(Y)  +  λ · mean_r( γ²_r / N_r )
+    L = (1 − λ) · MSE_Ef / MSE_init  +  λ · γ² / γ²_init
 
 where
-    MSE_Ef / Var(Y)  =  1 − R²                             (normalised Ef error, ∈ [0,1])
-    γ²_r / N_r       =  (Σ_k ν_k δ_k)² / (N_r·(Σ_k (ν_k δ_k)² + ε))
-                                                            (normalised γ², ∈ [0,1])
-    δ_i  = Ef_pred_i − Ef_DFT_i
-    N_r  = number of non-padded members in reaction r
-    Var(Y) = population variance of training Ef values (fixed per fold)
+    MSE_init = MSE of the untrained network  (fixed scalar per fold)
+    γ²_init  = mean γ² of the untrained network  (fixed scalar per fold)
+    γ²_r     = (Σ_k ν_k δ_k)² / (Σ_k (ν_k δ_k)² + ε)   (size-extensive γ²)
+    δ_i      = Ef_pred_i − Ef_DFT_i
 
-Both terms live in [0, 1] at initialisation, so λ is a genuine fractional weight
-throughout training — not a threshold that tips gradient dominance from one term
-to the other as MSE decays.
+Both terms equal 1.0 at epoch 0, so λ is a genuine fractional weight throughout
+training.  γ² retains its N factor (γ = √N |cos θ|, size-extensive) — the loss
+is normalised by γ²_init rather than by N, keeping the loss consistent with the
+score definition without sacrificing size extensivity.
 
 Suggested λ sweep with normalised loss: 0.1, 0.2, 0.3, 0.5, 0.7
 
@@ -240,14 +239,26 @@ class GammaLossNN(MLModel):
         Y_t = torch.tensor(Y,      dtype=torch.float32, device=dev)
 
         # ---- Normalisation constants (fixed for this fold) ----------------
-        # mse_init : MSE of the untrained network on the training set.
-        #            Normalising by this guarantees the Ef term starts at
-        #            exactly 1.0 at epoch 0, matching γ²/N ≈ 1.0.
-        #            λ is then a genuine fractional weight throughout training.
-        # var_y    : used as a floor so mse_init never collapses to zero.
-        var_y    = Y_t.var(unbiased=False).clamp(min=1e-6)
+        # Both terms are normalised by their value at epoch 0 so that:
+        #   - mse_loss  = MSE / MSE_init  → 1.0 at epoch 0
+        #   - gamma_loss = γ² / γ²_init  → 1.0 at epoch 0
+        # λ is then a genuine fractional weight throughout training.
+        # γ² keeps its N factor (size-extensive), consistent with the score
+        # definition γ = √N |cos θ|.  We normalise by γ²_init rather than
+        # by N, so the loss and the reported score share the same geometry.
+        var_y = Y_t.var(unbiased=False).clamp(min=1e-6)
         with torch.no_grad():
-            mse_init = ((self._net(X_t) - Y_t) ** 2).mean().clamp(min=var_y)
+            _pred0  = self._net(X_t)
+            _delta0 = _pred0 - Y_t
+            mse_init = (_delta0 ** 2).mean().clamp(min=var_y)
+
+            if has_rxn:
+                _c0   = R_coeff * _delta0[R_idx] * R_mask
+                _num0 = _c0.sum(dim=1) ** 2
+                _den0 = (_c0 ** 2).sum(dim=1) + self.eps
+                gamma2_init = (_num0 / _den0).mean().clamp(min=1e-6)
+            else:
+                gamma2_init = torch.ones(1, device=dev)
 
         # ---- Training loop (full-batch) -----------------------------------
         # Full-batch is required: γ² needs to see complete reactions in one
@@ -259,22 +270,19 @@ class GammaLossNN(MLModel):
             pred  = self._net(X_t)          # (N_train,)
             delta = pred - Y_t              # per-compound errors
 
-            # -- Normalised MSE term: MSE / MSE_init ∈ [0, 1]
-            #    = 1.0 at epoch 0, → 0 as training improves
+            # -- Normalised MSE:  MSE / MSE_init  (= 1.0 at epoch 0)
             mse_loss = (delta ** 2).mean() / mse_init
 
-            # -- Normalised γ²/N term ∈ [0, 1]
-            #    γ²_r / N_r  =  (Σ c)² / (N_r · (Σ c² + ε))
-            #    dividing by N_r brings the upper bound to 1 for any
-            #    reaction size, making the term truly scale-invariant.
+            # -- Normalised γ²:  γ² / γ²_init  (= 1.0 at epoch 0)
+            #    γ²_r = (Σ c)² / (Σ c² + ε)  retains the N factor so the
+            #    loss is consistent with the size-extensive score definition.
             if has_rxn:
                 with torch.no_grad() if self.lam == 0 else torch.enable_grad():
-                    c    = R_coeff * delta[R_idx]        # (M, K)
-                    c    = c * R_mask                    # zero padding
-                    N_r  = R_mask.sum(dim=1)             # (M,) real members per reaction
-                    num  = c.sum(dim=1) ** 2             # (M,)
-                    den  = (c ** 2).sum(dim=1) + self.eps
-                    gamma_loss = (num / (N_r * den)).mean()
+                    c          = R_coeff * delta[R_idx]   # (M, K)
+                    c          = c * R_mask               # zero padding
+                    num        = c.sum(dim=1) ** 2        # (M,)
+                    den        = (c ** 2).sum(dim=1) + self.eps
+                    gamma_loss = (num / den).mean() / gamma2_init
             else:
                 gamma_loss = torch.zeros(1, device=dev).squeeze()
 
@@ -284,12 +292,14 @@ class GammaLossNN(MLModel):
             scheduler.step()
 
             if epoch % 50 == 0 or epoch == self.epochs - 1:
-                print(
+                msg = (
                     f'  [GammaLossNN] epoch {epoch:>4d} | '
                     f'loss={loss.item():.5f}  '
-                    f'(1-R²)={mse_loss.item():.5f}  '
-                    f'γ²/N={gamma_loss.item():.5f}'
+                    f'MSE/MSE₀={mse_loss.item():.5f}'
                 )
+                if self.lam > 0 and has_rxn:
+                    msg += f'  γ²/γ²₀={gamma_loss.item():.5f}'
+                print(msg)
 
         self._net.eval()
         return self

@@ -1,0 +1,300 @@
+================================================================================
+CITATIONS FOR: Interference Score / GammaLoss project
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+1. CORE REFERENCE (the paper you build on)
+────────────────────────────────────────────────────────────────────────────────
+
+Bartel, C.J., Trewartha, A., Wang, Q., Dunn, A., Jain, A. & Ceder, G.
+"A critical examination of compound stability predictions from machine-learned
+formation energies."
+npj Computational Materials 6, 97 (2020).
+DOI: 10.1038/s41524-020-00362-y
+
+────────────────────────────────────────────────────────────────────────────────
+2. DATABASE
+────────────────────────────────────────────────────────────────────────────────
+
+Jain, A., Ong, S.P., Hautier, G., Chen, W., Richards, W.D., Dacek, S.,
+Cholia, S., Gunter, D., Skinner, D., Ceder, G. & Persson, K.A.
+"Commentary: The Materials Project: A materials genome approach to accelerating
+materials innovation."
+APL Materials 1(1), 011002 (2013).
+DOI: 10.1063/1.4812323
+
+────────────────────────────────────────────────────────────────────────────────
+3. MODELS FROM BARTEL ET AL. (cite whichever you discuss)
+────────────────────────────────────────────────────────────────────────────────
+
+[Roost]
+Goodall, R.E.A. & Lee, A.A.
+"Predicting materials properties without crystal structure: Deep representation
+learning from stoichiometry."
+Nature Communications 11, 6280 (2020).
+DOI: 10.1038/s41467-020-19964-7
+Note: composition-only attention model — direct architectural comparison.
+
+[CGCNN]
+Xie, T. & Grossman, J.C.
+"Crystal Graph Convolutional Neural Networks for an accurate and interpretable
+prediction of material properties."
+Physical Review Letters 120, 145301 (2018).
+DOI: 10.1103/PhysRevLett.120.145301
+Note: requires crystal structure — not a direct architectural comparison.
+
+[ElemNet]
+Jha, D., Ward, L., Paul, A., Liao, W., Choudhary, A., Wolverton, C.
+& Agrawal, A.
+"ElemNet: Deep learning the chemistry of materials from only elemental
+composition."
+Scientific Reports 8, 17593 (2018).
+DOI: 10.1038/s41598-018-35934-y
+Note: composition-only deep MLP — closest architectural comparison to yours.
+
+[Magpie features]
+Ward, L., Agrawal, A., Choudhary, A. & Wolverton, C.
+"A general-purpose machine learning framework for predicting properties of
+inorganic materials."
+npj Computational Materials 2, 16028 (2016).
+DOI: 10.1038/npjcompumats.2016.28
+
+[Meredig features]
+Meredig, B., Agrawal, A., Kirklin, S., Saal, J.E., Doak, J.W., Thompson, A.,
+Zhang, K., Choudhary, A. & Wolverton, C.
+"Combinatorial screening for new materials in unconstrained composition space
+with machine learning."
+Physical Review B 89, 094104 (2014).
+DOI: 10.1103/PhysRevB.89.094104
+
+[AutoMat / automatminer]
+Dunn, A., Wang, Q., Ganose, A., Dopp, D. & Jain, A.
+"Benchmarking materials property prediction methods: the Matbench test set and
+automatminer reference algorithm."
+npj Computational Materials 6, 138 (2020).
+DOI: 10.1038/s41524-020-00406-3
+
+[Deml features]
+Deml, A.M., O'Hayre, R., Wolverton, C. & Stevanović, V.
+"Predicting density functional theory total energies and enthalpies of formation
+of metal-nonmetal compounds by linear regression."
+Physical Review B 93, 085142 (2016).
+DOI: 10.1103/PhysRevB.93.085142
+
+────────────────────────────────────────────────────────────────────────────────
+4. SOFTWARE & INFRASTRUCTURE
+────────────────────────────────────────────────────────────────────────────────
+
+[matminer — ElementFraction featurizer]
+Ward, L., Dunn, A., Faghaninia, A., Zimmermann, N.E.R., Bajaj, S., Wang, Q.,
+Montoya, J., Chen, J., Bystrom, K., Dylla, M., Chard, K., Asta, M.,
+Persson, K.A., Snyder, G.J., Foster, I. & Jain, A.
+"Matminer: An open source toolkit for materials data mining."
+Computational Materials Science 152, 60–69 (2018).
+DOI: 10.1016/j.commatsci.2018.05.018
+
+[pymatgen — composition parsing]
+Ong, S.P., Richards, W.D., Jain, A., Hautier, G., Kocher, M., Cholia, S.,
+Gunter, D., Chevrier, V.L., Persson, K.A. & Ceder, G.
+"Python Materials Genomics (pymatgen): A robust, open-source python library for
+materials analysis."
+Computational Materials Science 68, 314–319 (2013).
+DOI: 10.1016/j.commatsci.2012.10.028
+
+[PyTorch]
+Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G.,
+Killeen, T., Lin, Z., Gimelshein, N., Antiga, L., et al.
+"PyTorch: An imperative style, high-performance deep learning library."
+Advances in Neural Information Processing Systems 32 (NeurIPS 2019).
+https://pytorch.org
+
+[scikit-learn]
+Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O.,
+Blondel, M., Prettenhofer, P., Weiss, R., Dubourg, V., Vanderplas, J.,
+Passos, A., Cournapeau, D., Brucher, M., Perrot, E. & Duchesnay, E.
+"Scikit-learn: Machine learning in Python."
+Journal of Machine Learning Research 12, 2825–2830 (2011).
+
+────────────────────────────────────────────────────────────────────────────────
+5. TRAINING METHODS
+────────────────────────────────────────────────────────────────────────────────
+
+[Adam optimizer]
+Kingma, D.P. & Ba, J.
+"Adam: A method for stochastic optimization."
+International Conference on Learning Representations (ICLR), 2015.
+arXiv: 1412.6980
+
+[Cosine annealing learning rate schedule]
+Loshchilov, I. & Hutter, F.
+"SGDR: Stochastic gradient descent with warm restarts."
+International Conference on Learning Representations (ICLR), 2017.
+arXiv: 1608.03983
+
+[Batch normalisation]
+Ioffe, S. & Szegedy, C.
+"Batch normalization: Accelerating deep network training by reducing internal
+covariate shift."
+International Conference on Machine Learning (ICML), 2015.
+arXiv: 1502.03167
+
+[ReLU activation]
+Nair, V. & Hinton, G.E.
+"Rectified linear units improve restricted Boltzmann machines."
+International Conference on Machine Learning (ICML), 2010.
+
+────────────────────────────────────────────────────────────────────────────────
+6. MULTI-TASK LEARNING & LOSS BALANCING
+────────────────────────────────────────────────────────────────────────────────
+Context: your normalised loss L = (1−λ)·MSE/MSE₀ + λ·γ²/γ²₀ is a two-task
+objective. Cite these if a reviewer asks about alternative balancing strategies.
+
+[Foundational multi-task learning]
+Caruana, R.
+"Multitask learning."
+Machine Learning 28, 41–75 (1997).
+DOI: 10.1023/A:1007379606734
+
+[Uncertainty weighting — the most-cited alternative to fixed λ]
+Kendall, A., Gal, Y. & Cipolla, R.
+"Multi-task learning using uncertainty to weigh losses for scene geometry and
+semantics."
+IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2018.
+DOI: 10.1109/CVPR.2018.00781
+
+[GradNorm — gradient-magnitude-based balancing]
+Chen, Z., Badrinarayanan, V., Lee, C.Y. & Rabinovich, A.
+"GradNorm: Gradient normalization for adaptive loss balancing in deep multitask
+networks."
+International Conference on Machine Learning (ICML), 2018.
+arXiv: 1711.02257
+
+[Multi-task learning review]
+Ruder, S.
+"An overview of multi-task learning in deep neural networks."
+arXiv: 1706.05098 (2017).
+
+────────────────────────────────────────────────────────────────────────────────
+7. THEORETICAL BACKGROUND FOR THE γ SCORE
+────────────────────────────────────────────────────────────────────────────────
+
+[Jensen's inequality — E[γ] ≤ √E[γ²] since √· is concave]
+Jensen, J.L.W.V.
+"Sur les fonctions convexes et les inégalités entre les valeurs moyennes."
+Acta Mathematica 30, 175–193 (1906).
+DOI: 10.1007/BF02418571
+Note: use this to justify reporting and optimising γ² (whose null hypothesis
+E[γ²]=1 is exact) rather than γ (whose null E[γ]≈0.8 follows from Jensen).
+
+[Error propagation — classical framework your score extends]
+Taylor, J.R.
+"An Introduction to Error Analysis: The Study of Uncertainties in Physical
+Measurements." 2nd ed.
+University Science Books, Sausalito, CA (1997).
+ISBN: 978-0-935702-75-0
+
+[Size-extensivity — the property your γ score is designed to satisfy]
+Bartlett, R.J.
+"Many-body perturbation theory and coupled cluster theory for electron
+correlation in molecules."
+Annual Review of Physical Chemistry 32, 359–401 (1981).
+DOI: 10.1146/annurev.pc.32.100181.002043
+Note: size-extensivity originates in quantum chemistry as the requirement that
+the energy of N non-interacting systems scales linearly with N. Your γ satisfies
+the analogous property: for statistically independent errors, E[γ²]=1 regardless
+of reaction size N.
+
+[Cosine similarity / vector geometry — the θ interpretation of γ]
+γ = √N·|cos θ| is the projection of the normalised error vector onto the
+all-ones direction. No single citation needed; standard linear algebra.
+If you want a reference: Strang, G. "Linear Algebra and Its Applications."
+4th ed. Thomson Brooks/Cole (2006).
+
+[Law of total variance / variance of a sum — statistical basis of γ²]
+Var(Σᵢ cᵢ δᵢ) vs Σᵢ cᵢ² Var(δᵢ): γ² = 1 when errors are uncorrelated,
+γ² > 1 when correlated. Standard probability theory.
+Casella, G. & Berger, R.L. "Statistical Inference." 2nd ed.
+Duxbury Press (2002). ISBN: 978-0-534-24312-8
+
+────────────────────────────────────────────────────────────────────────────────
+8. BACKGROUND / PHYSICAL CONTEXT
+────────────────────────────────────────────────────────────────────────────────
+
+[Thermodynamic metastability scale — motivation for Ed as a target]
+Sun, W., Dacek, S.T., Ong, S.P., Hautier, G., Jain, A., Horton, M.K.,
+Kim, D.H., Ceder, G. & Persson, K.A.
+"The thermodynamic scale of inorganic crystalline metastability."
+Science Advances 2(11), e1600225 (2016).
+DOI: 10.1126/sciadv.1600225
+
+[DFT — PBE functional used by the Materials Project]
+Perdew, J.P., Burke, K. & Ernzerhof, M.
+"Generalized gradient approximation made simple."
+Physical Review Letters 77, 3865 (1996).
+DOI: 10.1103/PhysRevLett.77.3865
+
+[ML for materials science — general review for introduction]
+Schmidt, J., Marques, M.R.G., Botti, S. & Marques, M.A.L.
+"Recent advances and applications of machine learning in solid-state materials
+science."
+npj Computational Materials 5, 83 (2019).
+DOI: 10.1038/s41524-019-0221-0
+
+[ML for materials — Nature review]
+Butler, K.T., Davies, D.W., Cartwright, H., Isayev, O. & Walsh, A.
+"Machine learning for molecular and materials science."
+Nature 559, 547–555 (2018).
+DOI: 10.1038/s41586-018-0337-2
+
+[SMACT — used in Bartel's smact evaluation set]
+Davies, D.W., Butler, K.T., Jackson, A.J., Morris, A., Frost, J.M.,
+Skelton, J.M. & Walsh, A.
+"Computational screening of all stoichiometric inorganic materials."
+Chem 1(4), 617–627 (2016).
+DOI: 10.1016/j.chempr.2016.09.010
+
+[Bootstrap confidence intervals — for error bars on mean γ]
+Efron, B. & Tibshirani, R.J.
+"An Introduction to the Bootstrap."
+Chapman & Hall, New York (1994).
+ISBN: 978-0-412-04231-7
+
+────────────────────────────────────────────────────────────────────────────────
+9. ATTENTION MECHANISM (relevant for discussing Roost's architecture)
+────────────────────────────────────────────────────────────────────────────────
+
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N.,
+Kaiser, L. & Polosukhin, I.
+"Attention is all you need."
+Advances in Neural Information Processing Systems 30 (NeurIPS 2017).
+arXiv: 1706.03762
+Note: cite if you describe Roost's attention-based element interaction mechanism.
+
+================================================================================
+NOTES
+================================================================================
+
+ARCHITECTURE COMPARISONS
+  - ElemNet and Roost are the most relevant composition-only comparisons.
+  - CGCNN uses crystal structure and is not directly comparable.
+  - Your GammaLossNN sits between ElFrac (simpler model, same features) and
+    ElemNet (deeper MLP, same features) architecturally.
+
+THEORETICAL CHAIN FOR THE PAPER
+  γ² null hypothesis (E[γ²]=1 for uncorrelated errors, §7 Law of total variance)
+  → Jensen inequality explains E[γ] ≈ 0.8 ≠ 1.0 (§7 Jensen)
+  → size-extensivity of γ (§7 Bartlett, by analogy)
+  → normalised two-task loss with fixed λ (§6 Kendall / GradNorm for context)
+
+WHAT TO CITE FOR THE LOSS NORMALISATION
+  The Kendall and GradNorm references (§6) let you acknowledge that more
+  sophisticated balancing methods exist while justifying your simpler approach.
+  The key argument: normalising by initial loss makes λ a genuine fractional
+  weight without needing learned parameters or gradient statistics.
+
+DATASET CITATION CHAIN
+  Materials Project raw data → Jain et al. 2013 (§2)
+  Curated hullout dataset    → Bartel et al. 2020 (§1)
+  Both must be cited.
+
+================================================================================

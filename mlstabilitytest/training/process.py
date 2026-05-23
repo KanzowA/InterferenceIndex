@@ -138,7 +138,19 @@ def LiMnTMO(model, target):
     print("Preprocessing data")
     features_train, targets_train, _ = model.preprocess(input_data_all_mp)
 
+    # Save training-time state before the test preprocess call overwrites it.
+    # GammaLossNN stores self._data and self._labels during preprocess; fit()
+    # needs these to reflect the *training* set when building the reaction graph.
+    _saved_data   = getattr(model, '_data',   None)
+    _saved_labels = getattr(model, '_labels', None)
+
     features_test, _, labels_test = model.preprocess(input_data_LiMnTMO)
+
+    # Restore training state so fit() builds the reaction graph correctly.
+    if _saved_data is not None:
+        model._data   = _saved_data
+    if _saved_labels is not None:
+        model._labels = _saved_labels
 
     print("Training")
     predictions = model.fit_and_predict(
