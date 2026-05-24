@@ -46,14 +46,15 @@ MAX_RXN_SIZE = 10   # maximum compounds per decomposition reaction in hullout.js
 # MLP definition
 # ---------------------------------------------------------------------------
 class _MLP(nn.Module):
-    """Simple feed-forward net:  input → [Linear → BN → ReLU] × L → Linear → scalar"""
+    """Simple feed-forward net:  input → [Linear → BN → ReLU → Dropout] × L → Linear → scalar"""
 
-    def __init__(self, input_dim, hidden=(512, 256, 128)):
+    def __init__(self, input_dim, hidden=(512, 256, 128), dropout=0.15):
         super().__init__()
         layers = []
         in_dim = input_dim
         for h in hidden:
-            layers += [nn.Linear(in_dim, h), nn.BatchNorm1d(h), nn.ReLU()]
+            layers += [nn.Linear(in_dim, h), nn.BatchNorm1d(h), nn.ReLU(),
+                       nn.Dropout(p=dropout)]
             in_dim = h
         layers.append(nn.Linear(in_dim, 1))
         self.net = nn.Sequential(*layers)
@@ -95,7 +96,7 @@ class GammaLossNN(MLModel):
         target='Ef',
         lam=0.25,
         eps=1e-4,
-        hidden=(512, 256, 128),
+        hidden=(1024, 512, 256),
         lr=1e-3,
         epochs=300,
         device=None,
@@ -230,7 +231,8 @@ class GammaLossNN(MLModel):
         # ---- Build network ------------------------------------------------
         input_dim = X_feat.shape[1]
         self._net = _MLP(input_dim, self.hidden).to(dev)
-        optimizer = torch.optim.Adam(self._net.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self._net.parameters(), lr=self.lr,
+                                     weight_decay=1e-4)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=self.epochs, eta_min=self.lr * 0.01
         )

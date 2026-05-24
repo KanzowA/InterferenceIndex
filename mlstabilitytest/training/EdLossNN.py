@@ -52,7 +52,7 @@ class EdLossNN(GammaLossNN):
         self,
         target='Ef',
         alpha=5.0,
-        hidden=(512, 256, 128),
+        hidden=(1024, 512, 256),
         lr=1e-3,
         epochs=300,
         device=None,

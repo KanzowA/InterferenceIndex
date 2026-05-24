@@ -163,24 +163,24 @@ def plot_propagation_circles(results):
         rows   = by_model[model_name]
         color  = model_colors.get(model_name, "gray")
         Ns     = [r["N"] for r in rows]
-        gammas = [r["gamma_err"] for r in rows]
+        xis = [r["gamma_err"] for r in rows]
         deltas = [r["delta_err"] for r in rows]
         thetas = [r["theta_err"] for r in rows]
-        gammas_mean = []
+        xis_mean = []
         deltas_mean = []
-        gammas_average = []
+        xis_average = []
         deltas_average = []
         for i in range(2, 11):
             thetas_i = [r["theta_err"] for r in rows if r["N"] == i]
             if not thetas_i:
                 continue
             mean_theta_i = sum(thetas_i) / len(thetas_i)
-            gammas_mean.append(np.sqrt(i) * np.cos(np.radians(mean_theta_i)))
+            xis_mean.append(np.sqrt(i) * np.cos(np.radians(mean_theta_i)))
             deltas_mean.append(np.sqrt(i) * np.sin(np.radians(mean_theta_i)))
 
-            gammas_i = [r["gamma_err"] for r in rows if r["N"] == i]
-            average_gamma = sum(gammas_i) / len(gammas_i)
-            gammas_average.append(average_gamma)
+            xis_i = [r["gamma_err"] for r in rows if r["N"] == i]
+            average_gamma = sum(xis_i) / len(xis_i)
+            xis_average.append(average_gamma)
             deltas_average.append(np.sqrt(i) * np.sin(np.arccos(average_gamma / np.sqrt(i))))
 
         arc = np.linspace(0, np.pi / 2, 300)
@@ -194,10 +194,10 @@ def plot_propagation_circles(results):
                     f"N={N_val}", color="gray", fontsize=7,
                     va="top", ha="left", rotation=-80)
 
-        ax.scatter(gammas, deltas, c=color, s=6, alpha=0.3, label=model_name)
-        ax.scatter(gammas_mean, deltas_mean, c='k', s=24, marker='x',
+        ax.scatter(xis, deltas, c=color, s=6, alpha=0.3, label=model_name)
+        ax.scatter(xis_mean, deltas_mean, c='k', s=24, marker='x',
                    label=r'$\langle\vartheta_N\rangle$ (mean)')
-        ax.scatter(gammas_average, deltas_average, c='k', s=24, marker='p',
+        ax.scatter(xis_average, deltas_average, c='k', s=24, marker='p',
                    label=r'$\langle\gamma\rangle$ (mean)')
         median_theta = np.radians(np.median(np.array(thetas)))
         max_r = math.sqrt(max(Ns))
@@ -214,15 +214,20 @@ def plot_propagation_circles(results):
         ax.legend(fontsize=8, markerscale=2)
 
         ax = axes[row_idx][1]
-        ax.hist([t / 90 for t in thetas], bins=30, range=(0, 1),
+        rms_xi    = np.sqrt(np.mean(np.array(xis) ** 2))
+        median_xi = np.median(np.array(xis))
+        xi_max    = math.sqrt(max(Ns))
+        ax.hist(xis, bins=30, range=(0, xi_max),
                 color=color, alpha=0.7, density=True)
-        ax.axvline(2 / np.pi * median_theta, color="gray", lw=1.0, ls=":",
-                   label=rf"$\langle\vartheta\rangle$ (median) $= {math.degrees(median_theta):.1f}°$")
-        ax.set_xlabel(r"$2\vartheta\,/\,\pi$")
-        ax.set_ylabel(r"$\rho(2\vartheta\,/\,\pi)$")
-        ax.set_title(f"{model_name} — $\\vartheta$ distribution")
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 4.2)
+        ax.axvline(1.0, color="gray", lw=1.0, ls=":", label=r"$\xi = 1$ (null)")
+        ax.axvline(rms_xi, color="black", lw=1.2, ls="--",
+                   label=rf"$\sqrt{{\langle\xi^2\rangle}} = {rms_xi:.3f}$")
+        ax.axvline(median_xi, color="black", lw=1.0, ls="-.",
+                   label=rf"median $\xi = {median_xi:.3f}$")
+        ax.set_xlabel(r"$\xi$", fontsize=12)
+        ax.set_ylabel(r"$\rho(\xi)$", fontsize=11)
+        ax.set_title(f"{model_name} — $\\xi$ distribution")
+        ax.set_xlim(0, xi_max)
         ax.legend(fontsize=8)
 
     plt.suptitle("Propagation Score — all models", fontsize=14, y=1.001)
@@ -254,14 +259,14 @@ def plot_score_vs_error(results, hullout):
     for row_idx, model_name in enumerate(models_present):
         rows  = by_model[model_name]
         color = model_colors.get(model_name, "gray")
-        gammas = np.array([r["gamma_err"] for r in rows])
+        xis = np.array([r["gamma_err"] for r in rows])
         ed_dft = np.array([r["Ed_DFT"]    for r in rows])
         stable = np.array([r["stability"]  for r in rows])
 
         ax = axes[row_idx][0]
         for is_stable, marker, label in [(True, 'o', 'stable'), (False, 'x', 'unstable')]:
             mask = stable == is_stable
-            ax.scatter(gammas[mask], np.abs(ed_dft[mask]),
+            ax.scatter(xis[mask], np.abs(ed_dft[mask]),
                        c=color, marker=marker, s=10, alpha=0.3, label=label)
         ax.set_xlabel(r"$\gamma$ (interference score, error-based)")
         ax.set_ylabel(r"$|\Delta H_d^{DFT}|$ (eV/atom)")
@@ -273,7 +278,7 @@ def plot_score_vs_error(results, hullout):
         centers = 0.5 * (bins[:-1] + bins[1:])
         for is_stable, ls, label in [(True, '-', 'stable'), (False, '--', 'unstable')]:
             mask = stable == is_stable
-            g_sub  = gammas[mask]
+            g_sub  = xis[mask]
             ed_sub = np.abs(ed_dft[mask])
             means  = [g_sub[(ed_sub >= bins[i]) & (ed_sub < bins[i+1])].mean()
                       for i in range(len(bins) - 1)]
@@ -433,18 +438,18 @@ def main():
     with open(sum_csv, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["model", "n", "Ef_MAE", "Ef_RMSE",
-                    "Ed_MAE", "Ed_RMSE", "mean_gamma", "median_gamma"])
+                    "Ed_MAE", "Ed_RMSE", "rms_xi", "median_xi"])
         for model, s in summary.items():
-            sc     = sorted(s["scores"])
-            n      = len(sc)
-            mean_g = sum(sc) / n if n else float('nan')
-            med_g  = sc[n // 2] if n else float('nan')
+            sc      = sorted(s["scores"])
+            n       = len(sc)
+            rms_g   = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
+            med_g   = sc[n // 2] if n else float('nan')
             w.writerow([model, s["n"],
                         round(s["mae"],     4),
                         round(s["rmse"],    4),
                         round(s["ed_mae"],  4),
                         round(s["ed_rmse"], 4),
-                        round(mean_g,       4),
+                        round(rms_g,        4),
                         round(med_g,        4)])
     print(f"Summary written to              {sum_csv}")
 
@@ -453,22 +458,23 @@ def main():
     sep = "─" * 82
     print(f"\n{sep}")
     print(f"  Interference Score Summary  ({split})")
-    print(f"  lower γ = more error cancellation  |  Ed = derived decomposition enthalpy")
+    print(f"  lower ξ = more error cancellation  |  Ed = derived decomposition enthalpy")
+    print(f"  RMS ξ = sqrt(<ξ²>); null hypothesis: RMS ξ = 1 for i.i.d. residuals")
     print(sep)
-    print(col.format("Model", "N", "Ef MAE", "Ef RMSE", "Ed MAE", "Ed RMSE", "Mean γ", "Median γ"))
+    print(col.format("Model", "N", "Ef MAE", "Ef RMSE", "Ed MAE", "Ed RMSE", "RMS ξ", "Median ξ"))
     print(sep)
     for model, s in summary.items():
-        sc     = sorted(s["scores"])
-        n      = len(sc)
-        mean_g = sum(sc) / n if n else float('nan')
-        med_g  = sc[n // 2] if n else float('nan')
+        sc    = sorted(s["scores"])
+        n     = len(sc)
+        rms_g = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
+        med_g = sc[n // 2] if n else float('nan')
         print(col.format(
             model, s["n"],
             f"{s['mae']:.4f}",
             f"{s['rmse']:.4f}",
             f"{s['ed_mae']:.4f}",
             f"{s['ed_rmse']:.4f}",
-            f"{mean_g:.4f}",
+            f"{rms_g:.4f}",
             f"{med_g:.4f}",
         ))
     print(sep)

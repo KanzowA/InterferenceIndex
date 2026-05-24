@@ -1,14 +1,14 @@
 """
 plot_gamma_sweep.py
 -------------------
-Quick plots of GammaLoss λ-sweep results from interference_summary.csv.
+Quick plots of InterferenceLoss λ-sweep results from interference_summary.csv.
 
 Three subplots stacked vertically (3×1), shared x-axis (λ):
   1. MAE(ΔHf)   — formation enthalpy accuracy
   2. MAE(ΔHd)   — decomposition enthalpy accuracy
   3. ⟨γ⟩        — mean interference score
 
-Usage (from TestStabilityMl dir):
+Usage (from TestStabilityMl dir):\
     python plot_gamma_sweep.py
     python plot_gamma_sweep.py interference_summary.csv   # explicit path
 """
@@ -55,10 +55,10 @@ with open(SUMMARY_CSV, newline="") as f:
         lambdas.append(lam)
         ef_maes.append(float(row["Ef_MAE"]))
         ed_maes.append(float(row["Ed_MAE"]))
-        mean_gammas.append(float(row["mean_gamma"]))
+        mean_gammas.append(float(row["rms_xi"]))
 
 if not lambdas:
-    print("No GammaLoss_* rows found in CSV.")
+    print("No InterferenceLoss_* rows found in CSV.")
     sys.exit(1)
 
 # Sort by lambda
@@ -76,12 +76,12 @@ LW     = 2.0
 x_pad  = 0.04
 
 fig, axes = plt.subplots(3, 1, figsize=(7, 11), sharex=True)
-fig.suptitle(r"GammaLoss $\lambda$-sweep", fontsize=13, fontweight="bold")
+#fig.suptitle(r"InterferenceLoss $\lambda$-sweep", fontsize=13, fontweight="bold")
 
 # ── Subplot 1: Ef MAE ──────────────────────────────────────────────────────────
 ax = axes[0]
 ax.plot(lambdas, ef_maes, color=ACCENT, marker=MARKER, ms=MS, lw=LW,
-        label="GammaLoss")
+        label="InterferenceLoss")
 for ref_name, ref in REFERENCES.items():
     ax.axhline(ref["Ef_MAE"], color=ref["color"], lw=1.2, ls="--",
                alpha=0.75, label=ref_name)
@@ -93,7 +93,7 @@ ax.grid(True, alpha=0.25)
 # ── Subplot 2: Ed MAE ──────────────────────────────────────────────────────────
 ax = axes[1]
 ax.plot(lambdas, ed_maes, color=ACCENT, marker=MARKER, ms=MS, lw=LW,
-        label="GammaLoss")
+        label="InterferenceLoss")
 min_i = ed_maes.index(min(ed_maes))
 ax.scatter([lambdas[min_i]], [ed_maes[min_i]],
            color=ACCENT, edgecolors="black", s=80, zorder=5,
@@ -113,7 +113,7 @@ for ref_name, ref in REFERENCES.items():
     ax.axhline(ref["mean_gamma"], color=ref["color"], lw=1.2, ls="--",
                alpha=0.75, label=ref_name)
 ax.set_xlabel(r"$\lambda$", fontsize=13)
-ax.set_ylabel(r'$\langle\gamma\rangle$', fontsize=13)
+ax.set_ylabel(r'$\sqrt{\langle\xi^2\rangle}$', fontsize=13)
 ax.set_xticks(lambdas)
 ax.set_xlim(-x_pad, max(lambdas) + x_pad)
 ax.legend(fontsize=8, framealpha=0.8)
