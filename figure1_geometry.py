@@ -99,13 +99,20 @@ ax1.text( -0.5, 0.80, r'$\xi=0$',        color=COL_CANCEL,  fontsize=9,
 
 
 # Vectors
-draw_vec(ax1, 1/np.sqrt(2), 1/np.sqrt(2), COL_ONES, r'$\vec{1}$', (0.00, 0.10))
+draw_vec(ax1, 1/np.sqrt(2), 1/np.sqrt(2), COL_ONES, r'$\boldsymbol{1}$', (0.00, 0.10))
 # rA at (-1/√2, -1/√2): constructive diagonal, away from 1̂
-draw_vec(ax1, -1/np.sqrt(2), -1/np.sqrt(2), COL_AMPLIFY, r'$\vec{r}_\mathrm{A}$', (0.00,  0.20))
+draw_vec(ax1, -1/np.sqrt(2), -1/np.sqrt(2), COL_AMPLIFY, r'$\boldsymbol{r}_\mathrm{A}$', (0.00,  0.20))
 # rB at (+1/√2, -1/√2): cancellation diagonal
-draw_vec(ax1,  -1/np.sqrt(2), 1/np.sqrt(2), COL_CANCEL,  r'$\vec{r}_\mathrm{B}$', (0.00,  -0.26))
+draw_vec(ax1,  -1/np.sqrt(2), 1/np.sqrt(2), COL_CANCEL,  r'$\boldsymbol{r}_\mathrm{B}$', (0.00,  -0.26))
 # rC on x-axis: null; label below to avoid ξ=1 text
-draw_vec(ax1,  1.0,  0.00, COL_NULL, r'$\vec{r}_\mathrm{C}$', (-0.05, -0.20))
+draw_vec(ax1,  1.0,  0.00, COL_NULL, r'$\boldsymbol{r}_\mathrm{C}$', (-0.05, -0.20))
+
+t_ann = np.linspace(0, np.pi / 4, 50)
+r_ann = 0.25
+ax1.plot(r_ann * np.cos(t_ann), r_ann * np.sin(t_ann), 'k-', lw=1.5, zorder=6)
+ax1.text(r_ann * 0.7 * np.cos(np.pi / 8),
+         r_ann * 0.6 * np.sin(np.pi / 8),
+         r'$\theta$', fontsize=12, va='center', ha='center')
 
 ax1.axvline(0.00, ymin=0.00, ymax=1.00, color = 'k', alpha = 0.3)
 ax1.axhline(0.00, xmin=0.00, xmax=1.00, color = 'k', alpha = 0.3)
@@ -141,18 +148,20 @@ ax2.add_collection(lc)
 t_ann = np.linspace(0, np.pi / 4, 50)
 r_ann = 0.25
 ax2.plot(r_ann * np.cos(t_ann), r_ann * np.sin(t_ann), 'k-', lw=1.5, zorder=6)
-ax2.text(r_ann * 0.6 * np.cos(np.pi / 8),
+ax2.text(r_ann * 0.7 * np.cos(np.pi / 8),
          r_ann * 0.6 * np.sin(np.pi / 8),
          r'$\theta$', fontsize=12, va='center', ha='center')
 
 # Example vectors at rightful places: θ=0° (ξ=√2), θ=45° (ξ=1), θ=90° (ξ=0)
 examples_circ = [
-    (0,          COL_AMPLIFY, r'$\vec{r}_\mathrm{A}$', ( -0.15,  0.10)),   # tip (√2, 0) — label above
-    (np.pi / 2,  COL_CANCEL,  r'$\vec{r}_\mathrm{B}$', ( 0.07,  -0.16)),   # tip (0, √2) — label right
-    (np.pi / 4,  COL_NULL,    r'$\vec{r}_\mathrm{C}$', ( -0.2,  -0.05)),   # tip (1, 1)
+    (0,          COL_ONES, r'$\boldsymbol{1}$', ( -0.3,  0.10)),
+    (0,          COL_AMPLIFY, r'$\boldsymbol{r}_\mathrm{A}$', ( -0.15,  0.10)),   # tip (√2, 0) — label above
+    (np.pi / 2,  COL_CANCEL,  r'$\boldsymbol{r}_\mathrm{B}$', ( 0.07,  -0.16)),   # tip (0, √2) — label right
+    (np.pi / 4,  COL_NULL,    r'$\boldsymbol{r}_\mathrm{C}$', ( -0.2,  -0.05)),   # tip (1, 1)
 ]
 for angle, col, lbl, loff in examples_circ:
     draw_vec(ax2, R * np.cos(angle), R * np.sin(angle), col, lbl, loff)
+
 
 # Reference dotted lines at x=1 and y=1
 #ax2.axhline(1.0, color='k', lw=0.8, ls=':', alpha=0.3, zorder=2)
@@ -166,7 +175,7 @@ ax2.set_yticks(tick_v); ax2.set_yticklabels(tick_l)
 ax2.set_xlim(-0.05 * R, R * 1.1)
 ax2.set_ylim(-0.05 * R, R * 1.1)
 ax2.set_xlabel(r'$\xi = \sqrt{N}\cos\theta$', fontsize=11)
-ax2.set_ylabel(r'$\sqrt{N}\sin\theta$',        fontsize=11)
+ax2.set_ylabel(r'$\eta = \sqrt{N}\sin\theta$',        fontsize=11)
 ax2.set_aspect('equal')
 
 # Panel label: outside, top-left

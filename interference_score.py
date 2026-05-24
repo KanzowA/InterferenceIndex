@@ -124,12 +124,32 @@ def interference_score(compound, rxn_str, ml_ef, dft_ef, mode='error'):
     return numerator / denominator, len(c), signed_sum
 
 
-def compute_mae_rmse(ml_ef, dft_ef):
-    """MAE and RMSE over all compounds present in both dicts."""
+def compute_mae_rmse(ml_ef, dft_ef, reference_compounds=None):
+    """MAE and RMSE over a defined reference set.
+
+    Parameters
+    ----------
+    ml_ef : dict  {formula: predicted_Ef}
+    dft_ef : dict {formula: dft_Ef}
+    reference_compounds : iterable, optional
+        The full set of compounds over which MAE is defined.
+        If given, the denominator is len(reference_compounds) and compounds
+        missing from ml_ef are counted as errors of NaN (excluded from sum
+        but the denominator reflects the full set size).
+        If None, iterates over ml_ef keys (legacy behaviour).
+    """
     errors = []
-    for formula, ml_val in ml_ef.items():
-        if formula in dft_ef:
-            errors.append(ml_val - dft_ef[formula])
+    n_missing = 0
+    compounds = reference_compounds if reference_compounds is not None else ml_ef.keys()
+    for formula in compounds:
+        if formula not in dft_ef:
+            continue
+        if formula not in ml_ef:
+            n_missing += 1
+            continue
+        errors.append(ml_ef[formula] - dft_ef[formula])
+    if n_missing:
+        print(f"    [MAE] {n_missing} compounds in reference set have no ML prediction — excluded from MAE")
     if not errors:
         return float('nan'), float('nan')
     mae  = sum(abs(e) for e in errors) / len(errors)
@@ -338,13 +358,19 @@ def main():
 
     print("Loading DFT reference data …")
     hullout = load_json(HULLOUT)
-    dft_ef  = {k: v["Ef"] for k, v in load_json(EF_DFT).items()}
 
+    # Full DFT reference (85,014): used for Ef MAE — includes elements (Ef=0)
+    dft_ef_all = {f: v["Ef"] for f, v in hullout.items() if isinstance(v, dict) and "Ef" in v}
+
+    # Non-elemental compounds with a reaction string: used for interference scoring
     valid_compounds = [
         f for f, v in hullout.items()
         if isinstance(v, dict) and "rxn" in v and not is_element(f)
     ]
-    print(f"  {len(valid_compounds)} non-elemental compounds in hullout\n")
+    # Ef reference restricted to valid_compounds (for interference score internals)
+    dft_ef = {f: hullout[f]["Ef"] for f in valid_compounds}
+    print(f"  {len(dft_ef_all)} total compounds in hullout (MAE reference)")
+    print(f"  {len(valid_compounds)} non-elemental compounds for interference scoring\n")
 
     results = []
     # Per-model accumulators for the summary table
@@ -359,8 +385,8 @@ def main():
         print(f"Processing {model} …")
         ml_ef = load_json(ml_input_path)
 
-        # ── MAE / RMSE over all predicted compounds ────────────────────────
-        mae, rmse = compute_mae_rmse(ml_ef, dft_ef)
+        # ── MAE / RMSE over all 85,014 compounds in hullout ──────────────
+        mae, rmse = compute_mae_rmse(ml_ef, dft_ef_all, reference_compounds=list(dft_ef_all.keys()))
 
         # ── Per-compound γ scores and Ed errors ───────────────────────────
         scores    = []
