@@ -254,7 +254,8 @@ def plot_interference_circles(results, models):
         # Histogram bars floating above the frame (clip_on=False)
         rms_xi = math.sqrt(float(np.mean(xis ** 2)))
         counts, edges = np.histogram(xis, bins=35, range=(0, lim), density=True)
-        for left, right, h in zip(edges[:-1], edges[1:], counts):
+        bar_tops = lim + counts * HIST_SCALE   # top y of each bar in data coords
+        for left, right, h, bar_top in zip(edges[:-1], edges[1:], counts, bar_tops):
             xi_mid = (left + right) / 2
             bar_h  = h * HIST_SCALE
             ax.bar(left, bar_h, width=right - left, bottom=lim,
@@ -262,21 +263,32 @@ def plot_interference_circles(results, models):
                    align='edge', edgecolor='none', alpha=0.85,
                    zorder=3, clip_on=False)
 
-        # Reference lines through circle region and histogram
-        ax.plot([1.0, 1.0], [0, FULL_H], color=_COL_REF, lw=0.9, ls=':',
+        def _vline_top(x_val):
+            """Return the top of the histogram bar that x_val falls in (or lim if none)."""
+            for i in range(len(counts)):
+                if edges[i] <= x_val < edges[i + 1]:
+                    return float(lim + counts[i] * HIST_SCALE)
+            return float(lim)
+
+        # Reference lines — extend only to the top of their overlapping histogram bar
+        xi1_top = _vline_top(1.0)
+        rms_top = _vline_top(rms_xi)
+        ax.plot([1.0, 1.0], [0, xi1_top], color=_COL_REF, lw=0.9, ls=':',
                 alpha=0.7, zorder=4, clip_on=False, label=r'$\xi = 1$')
-        ax.plot([rms_xi, rms_xi], [0, FULL_H], color='black', lw=1.2, ls='--',
+        ax.plot([rms_xi, rms_xi], [0, rms_top], color='black', lw=1.2, ls='--',
                 zorder=5, clip_on=False,
                 label=r'$\sqrt{\langle\xi^2\rangle} = ' + rf'{rms_xi:.3f}$')
 
-        # Frame wraps circle region only; histogram sits outside above
+        # Full box frame; ticks and labels on bottom and left only
         ax.set_xlim(0, lim)
         ax.set_ylim(0, lim)
         ax.set_xticks(tick_vals)
         ax.set_yticks(tick_vals)
+        
         ax.set_xlabel(r'$\xi = \sqrt{N}\cos\theta$', fontsize=11)
         ax.set_ylabel(r'$\eta = \sqrt{N}\sin\theta$', fontsize=11)
         ax.set_aspect('equal')
+        ax.tick_params(top=False, right=False)
         ax.legend(fontsize=8, loc='upper right')
 
         # Model name above the histogram (no letter label)
@@ -288,8 +300,19 @@ def plot_interference_circles(results, models):
     # Hide any unused axes in the grid
     for idx in range(n_models, n_rows * n_cols):
         axes[idx // n_cols, idx % n_cols].set_visible(False)
+
+    for r in range(n_rows):
+        for c in range(n_cols):
+            ax = axes[r, c]
+            if c != 0:
+                ax.tick_params(labelleft=False)
+                ax.set_ylabel('')
+            if r != n_rows - 1:
+                ax.tick_params(labelbottom=False)
+                ax.set_xlabel('')
         
-    plt.tight_layout()
+        
+    plt.tight_layout(w_pad=4.0)
     plt.savefig("interference_circles.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     print("Figure saved to interference_circles.png")
