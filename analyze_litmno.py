@@ -1,13 +1,13 @@
 """
 analyze_litmno.py
 -----------------
-Runs StabilityAnalysis for GammaLoss_* models on the LiMnTMO experiment,
+Runs StabilityAnalysis for iiLoss_* models on the LiMnTMO experiment,
 generating ml_results.json files comparable to the existing Bartel et al. models.
 
 Usage (from TestStabilityMl dir):
     python analyze_litmno.py
 
-Add more models to MODELS below if needed (e.g. GammaLoss_0.2).
+Add more models to MODELS below if needed (e.g. iiLoss_0.2).
 """
 
 import os
@@ -23,7 +23,7 @@ from mlstabilitytest.stability.StabilityAnalysis import StabilityAnalysis
 from mlstabilitytest.analyze_models import process
 
 # ── Models and experiments to evaluate ────────────────────────────────────────
-MODELS     = ["GammaLoss_0.0", "GammaLoss_0.1"]
+MODELS     = ["iiLoss_0.0", "iiLoss_0.1"]
 EXPERIMENT = "LiMnTMO"
 PROP       = "Ef"
 

@@ -1,29 +1,29 @@
 """
-GammaLossNN — ElementFraction MLP trained with a normalised MSE + γ²/N loss.
+iiLossNN — ElementFraction MLP trained with a normalised MSE + ξ² loss.
 
 Loss:
-    L = (1 − λ) · MSE_Ef / MSE_ref  +  λ · γ² / γ²_ref
+    L = (1 − λ) · MSE_Ef / MSE_ref  +  λ · ξ² / ξ²_ref
 
-where MSE_ref and γ²_ref are periodically refreshed reference values so that
-the 90/10 (or whatever λ) weighting is maintained throughout training, not
-just at epoch 0.
+where MSE_ref and ξ²_ref are periodically refreshed reference values so that
+the λ-weighting is reinstated during training, not just at epoch 0.
 
 Architecture:
     ResidualMLP — input → projection → ResBlock × L → output
-    LayerNorm instead of BatchNorm (no running stats, works cleanly with
-    full-batch and at eval time).
-    Skip connections at every layer so the subtle γ² gradient signal
+    LayerNorm (no running stats, works cleanly with full-batch and at eval time).
+    Skip connections at every layer so the subtle ξ² gradient signal
     has short paths back to early weights.
 
-Training improvements over v1:
+Training improvements:
     warmup_frac  — first fraction of epochs trains with pure MSE (λ=0),
-                   giving Ef accuracy a head start before γ² steers.
-    renorm_every — recompute MSE_ref and γ²_ref every N epochs so the
+                   giving Ef accuracy a head start before ξ² steers.
+    renorm_every — recompute MSE_ref and ξ²_ref every N epochs so the
                    λ fractional weighting stays honest as MSE decays.
-    grad_clip    — clip gradient norm to stabilise the coupled γ² updates.
+    grad_clip    — clip gradient norm to stabilise the coupled ξ² updates.
 
-Plugs directly into the existing Bartel-et-al. infrastructure:
-    python train_models.py allMP Ef GammaLoss_0.1
+Called by (λ = 0.1):
+    python train_models.py allMP Ef iiLoss_0.1
+
+Metrics:
     python interference_score.py
 """
 
@@ -44,8 +44,8 @@ from mlstabilitytest.training.MLModel import MLModel
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-MAX_RXN_SIZE = 10
 
+MAX_RXN_SIZE = 10
 
 # ---------------------------------------------------------------------------
 # Architecture
@@ -116,21 +116,21 @@ class _ResidualMLP(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# GammaLossNN
+# iiLossNN
 # ---------------------------------------------------------------------------
 
-class GammaLossNN(MLModel):
+class iiLossNN(MLModel):
     """
-    ElementFraction MLP with γ²-regularised loss.
+    ElementFraction MLP with ξ²-regularised loss (interference index loss).
 
     Parameters
     ----------
     target : str
         Regression target key ('Ef' or 'Ed').
     lam : float
-        Weight of γ² loss term (0 = pure MSE, 1 = pure γ²).
+        Weight of ξ² loss term (0 = pure MSE, 1 = pure ξ²).
     eps : float
-        Stabiliser in γ² denominator (eV²/atom²).
+        Stabiliser in ξ² denominator (eV²/atom²).
     hidden : tuple of int
         Hidden layer widths. Default: (1024, 512, 256, 128).
     dropout : float
@@ -144,7 +144,7 @@ class GammaLossNN(MLModel):
         ramping to the target λ.  E.g. 0.1 = 50 warmup epochs
         out of 500.  Gives Ef accuracy a head start.
     renorm_every : int
-        Recompute MSE_ref and γ²_ref every N epochs so the
+        Recompute MSE_ref and ξ²_ref every N epochs so the
         (1-λ)/λ weighting stays honest as MSE decays during
         training.  Set to 0 to use fixed epoch-0 references
         (original behaviour).
@@ -154,7 +154,7 @@ class GammaLossNN(MLModel):
         'cuda', 'cpu', or None (auto-detect).
     """
 
-    model_type = 'gamma_nn'
+    model_type = 'ii_nn'
 
     def __init__(
         self,
@@ -262,7 +262,7 @@ class GammaLossNN(MLModel):
             has_rxn = True
         else:
             has_rxn = False
-            print("  [GammaLossNN] Warning: no reactions in fold — pure MSE.")
+            print("  [iiLossNN] Warning: no reactions in fold — pure MSE.")
 
         # -- Network, optimiser, scheduler ---------------------------------
         input_dim = X_feat.shape[1]
@@ -293,7 +293,7 @@ class GammaLossNN(MLModel):
             return self.lam
 
         # -- Initial reference values --------------------------------------
-        mse_ref, gamma2_ref = self._compute_refs(
+        mse_ref, xi2_ref = self._compute_refs(
             X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
         )
 
@@ -305,7 +305,7 @@ class GammaLossNN(MLModel):
             if (self.renorm_every > 0
                     and epoch > 0
                     and epoch % self.renorm_every == 0):
-                mse_ref, gamma2_ref = self._compute_refs(
+                mse_ref, xi2_ref = self._compute_refs(
                     X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
                 )
 
@@ -319,14 +319,14 @@ class GammaLossNN(MLModel):
             mse_loss = (delta ** 2).mean() / mse_ref
 
             if has_rxn and lam_eff > 0:
-                c          = R_coeff * delta[R_idx] * R_mask
-                num        = c.sum(dim=1) ** 2
-                den        = (c ** 2).sum(dim=1) + self.eps
-                gamma_loss = (num / den).mean() / gamma2_ref
+                c       = R_coeff * delta[R_idx] * R_mask
+                num     = c.sum(dim=1) ** 2
+                den     = (c ** 2).sum(dim=1) + self.eps
+                xi_loss = (num / den).mean() / xi2_ref
             else:
-                gamma_loss = torch.zeros(1, device=dev).squeeze()
+                xi_loss = torch.zeros(1, device=dev).squeeze()
 
-            loss = (1.0 - lam_eff) * mse_loss + lam_eff * gamma_loss
+            loss = (1.0 - lam_eff) * mse_loss + lam_eff * xi_loss
             loss.backward()
 
             if self.grad_clip > 0:
@@ -339,12 +339,12 @@ class GammaLossNN(MLModel):
                 phase = ('warmup' if epoch < warmup_end
                          else 'ramp' if epoch < ramp_end
                          else 'train')
-                msg = (f'  [GammaLossNN] ep {epoch:>4d} [{phase}] '
+                msg = (f'  [iiLossNN] ep {epoch:>4d} [{phase}] '
                        f'loss={loss.item():.5f}  '
                        f'MSE/ref={mse_loss.item():.5f}  '
-                       f'λ_eff={lam_eff:.3f}')
+                       f'lam_eff={lam_eff:.3f}')
                 if lam_eff > 0 and has_rxn:
-                    msg += f'  γ²/ref={gamma_loss.item():.5f}'
+                    msg += f'  xi2/ref={xi_loss.item():.5f}'
                 print(msg)
 
         self._net.eval()
@@ -363,7 +363,7 @@ class GammaLossNN(MLModel):
     def _compute_refs(self, X_t, Y_t, R_idx, R_coeff, R_mask,
                       has_rxn, dev):
         """
-        Compute fresh MSE_ref and γ²_ref from current model predictions.
+        Compute fresh MSE_ref and ξ²_ref from current model predictions.
         Called at epoch 0 and every renorm_every epochs so that the
         (1-λ)/λ weighting stays calibrated as MSE decays during training.
         """
@@ -374,14 +374,14 @@ class GammaLossNN(MLModel):
             mse_ref = (delta0 ** 2).mean().clamp(min=var_y)
 
             if has_rxn:
-                c0          = R_coeff * delta0[R_idx] * R_mask
-                num0        = c0.sum(dim=1) ** 2
-                den0        = (c0 ** 2).sum(dim=1) + self.eps
-                gamma2_ref  = (num0 / den0).mean().clamp(min=1e-6)
+                c0      = R_coeff * delta0[R_idx] * R_mask
+                num0    = c0.sum(dim=1) ** 2
+                den0    = (c0 ** 2).sum(dim=1) + self.eps
+                xi2_ref = (num0 / den0).mean().clamp(min=1e-6)
             else:
-                gamma2_ref = torch.ones(1, device=dev)
+                xi2_ref = torch.ones(1, device=dev)
 
-        return mse_ref, gamma2_ref
+        return mse_ref, xi2_ref
 
 
 # ---------------------------------------------------------------------------

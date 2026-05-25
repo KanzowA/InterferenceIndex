@@ -14,12 +14,12 @@ interference_summary.csv, where Ed is derived by propagating Ef errors through
 decomposition reactions.  Both equal mean|Ed_ML − Ed_DFT|; they just arrive
 at Ed_ML differently.
 
-Note: γ cannot be computed for Ed-trained models because they don't produce
+Note: ξ cannot be computed for Ed-trained models because they don't produce
 Ef predictions (needed to evaluate the reaction interference pattern).
 
 Usage
 -----
-    # Run after:  python train_models.py allMP Ed GammaLoss_0.0
+    # Run after:  python train_models.py allMP Ed iiLoss_0.0
     python eval_ed_direct.py
 
 Output
@@ -116,7 +116,7 @@ def main():
             print(f"  n={n}  Ed MAE={mae:.4f}  Ed RMSE={rmse:.4f}")
     else:
         print(f"  [WARNING] No Ed model directory found at {ed_ml_dir}")
-        print("  Run:  python train_models.py allMP Ed GammaLoss_0.0")
+        print("  Run:  python train_models.py allMP Ed iiLoss_0.0")
 
     # ── Load Ef-trained baselines from interference_summary.csv ─────────────
     baseline_results = {}
@@ -129,8 +129,8 @@ def main():
                     "rmse": float(row["Ef_RMSE"]),
                     "ed_mae":  float(row["Ed_MAE"]),
                     "ed_rmse": float(row["Ed_RMSE"]),
-                    "mean_gamma":   float(row["mean_gamma"]),
-                    "median_gamma": float(row["median_gamma"]),
+                    "rms_xi":    float(row["rms_xi"]),
+                    "median_xi": float(row["median_xi"]),
                     "n": int(row["n"]),
                 }
     else:
@@ -144,7 +144,7 @@ def main():
     print(f"  'reaction-based' = Ed computed via Ef-error propagation through reactions")
     print(f"  'direct'         = Ed predicted directly by an Ed-trained model")
     print(sep)
-    print(hdr.format("Model", "N", "Ed MAE", "Ed RMSE", "γ (mean)"))
+    print(hdr.format("Model", "N", "Ed MAE", "Ed RMSE", "ξ (RMS)"))
     print(sep)
 
     # --- Ed-trained models (direct Ed prediction)
@@ -163,11 +163,11 @@ def main():
     # --- Ef-trained baselines (reaction-based Ed)
     SHOW_MODELS = [
         "ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet", "Roost", "CGCNN",
-        "GammaLoss_0.0",
+        "iiLoss_0.0",
     ]
-    # Also show any GammaLoss/EdLoss variants present
+    # Also show any iiLoss/EdLoss variants present
     for key in sorted(baseline_results):
-        if key.startswith(("GammaLoss_", "EdLoss_")) and key not in SHOW_MODELS:
+        if key.startswith(("iiLoss_", "EdLoss_")) and key not in SHOW_MODELS:
             SHOW_MODELS.append(key)
 
     for model in SHOW_MODELS:
@@ -179,22 +179,22 @@ def main():
             res["n"],
             f"{res['ed_mae']:.4f}",
             f"{res['ed_rmse']:.4f}",
-            f"{res['mean_gamma']:.4f}",
+            f"{res['rms_xi']:.4f}",
         ))
 
     print(sep)
     print()
 
     # ── Summary observation ──────────────────────────────────────────────────
-    if ed_model_results and "GammaLoss_0.0" in baseline_results:
+    if ed_model_results and "iiLoss_0.0" in baseline_results:
         best_direct = min(ed_model_results.values(), key=lambda r: r["mae"])
-        baseline_ed = baseline_results["GammaLoss_0.0"]["ed_mae"]
+        baseline_ed = baseline_results["iiLoss_0.0"]["ed_mae"]
         best_name   = min(ed_model_results, key=lambda k: ed_model_results[k]["mae"])
         print(
             f"Best Ed-direct model ({best_name}): Ed MAE = {best_direct['mae']:.4f} eV/atom"
         )
         print(
-            f"GammaLoss_0.0 Ef-trained baseline:  Ed MAE = {baseline_ed:.4f} eV/atom"
+            f"iiLoss_0.0 Ef-trained baseline:  Ed MAE = {baseline_ed:.4f} eV/atom"
             f"  (reaction-based)"
         )
         diff = best_direct["mae"] - baseline_ed

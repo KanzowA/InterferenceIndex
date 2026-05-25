@@ -8,7 +8,7 @@ where
     δ_i              = Ef_pred_i − Ef_DFT_i      (per-compound error)
     Σ_k ν_k δ_k      = Ed_pred_r − Ed_DFT_r      (per-reaction Ed error)
 
-Unlike GammaLossNN's γ² term, the Ed MSE term is NOT scale-normalised —
+Unlike iiLossNN's ξ² term, the Ed MSE term is NOT scale-normalised —
 it directly penalises large reaction prediction errors in eV²/atom².
 The Ef term is kept at full weight (no (1-α) factor) so Ef accuracy is
 never actively suppressed; α only adds an additional Ed signal.
@@ -26,10 +26,10 @@ Usage:
 import numpy as np
 import torch
 
-from mlstabilitytest.training.GammaLossNN import GammaLossNN, _MLP, _parse_rxn, MAX_RXN_SIZE
+from mlstabilitytest.training.iiLossNN import iiLossNN, _ResidualMLP as _MLP, _parse_rxn, MAX_RXN_SIZE
 
 
-class EdLossNN(GammaLossNN):
+class EdLossNN(iiLossNN):
     """
     ElementFraction MLP with direct Ed-MSE regularisation.
 
@@ -57,7 +57,7 @@ class EdLossNN(GammaLossNN):
         epochs=300,
         device=None,
     ):
-        # Initialise via GammaLossNN with lam=0 (no γ² term used here)
+        # Initialise via iiLossNN with lam=0 (no ξ² term used here)
         super().__init__(
             target=target,
             lam=0.0,
@@ -69,7 +69,7 @@ class EdLossNN(GammaLossNN):
         self.alpha = alpha
 
     # ------------------------------------------------------------------
-    # Override fit() to use the Ed-MSE loss instead of γ²
+    # Override fit() to use the Ed-MSE loss instead of ξ²
     # ------------------------------------------------------------------
     def fit(self, X, Y):
         """
@@ -87,7 +87,7 @@ class EdLossNN(GammaLossNN):
         train_labels  = self._labels[train_indices]
         label_to_pos  = {lbl: i for i, lbl in enumerate(train_labels)}
 
-        # ---- Build padded reaction tensors (same as GammaLossNN) ---------
+        # ---- Build padded reaction tensors (same as iiLossNN) --------------
         R_idx_list, R_coeff_list, R_mask_list = [], [], []
 
         for lbl in train_labels:

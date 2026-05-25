@@ -21,13 +21,13 @@ import matplotlib.ticker as ticker
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 SUMMARY_CSV = sys.argv[1] if len(sys.argv) > 1 else "interference_summary.csv"
-OUT_FILE    = "gamma_sweep.png"
+OUT_FILE    = "xi_sweep.png"
 
 # Reference lines from the Bartel models (drawn as horizontal dashed lines)
 REFERENCES = {
-    "ElFrac":  {"Ef_MAE": 0.2314, "Ed_MAE": 0.1722, "mean_gamma": 0.5874, "color": "steelblue"},
-    "ElemNet": {"Ef_MAE": 0.0971, "Ed_MAE": 0.1158, "mean_gamma": 0.8841, "color": "darkorange"},
-    "CGCNN":   {"Ef_MAE": 0.0340, "Ed_MAE": 0.0419, "mean_gamma": 0.8935, "color": "forestgreen"},
+    "ElFrac":  {"Ef_MAE": 0.2314, "Ed_MAE": 0.1722, "rms_xi": 0.5874, "color": "steelblue"},
+    "ElemNet": {"Ef_MAE": 0.0971, "Ed_MAE": 0.1158, "rms_xi": 0.8841, "color": "darkorange"},
+    "CGCNN":   {"Ef_MAE": 0.0340, "Ed_MAE": 0.0419, "rms_xi": 0.8935, "color": "forestgreen"},
 }
 
 # ── Load CSV ────────────────────────────────────────────────────────────────────
@@ -35,16 +35,16 @@ if not os.path.exists(SUMMARY_CSV):
     print(f"ERROR: {SUMMARY_CSV} not found. Run interference_score.py first.")
     sys.exit(1)
 
-lambdas     = []
-ef_maes     = []
-ed_maes     = []
-mean_gammas = []
+lambdas  = []
+ef_maes  = []
+ed_maes  = []
+rms_xis  = []
 
 with open(SUMMARY_CSV, newline="") as f:
     reader = csv.DictReader(f)
     for row in reader:
         model = row["model"]
-        if not model.startswith("GammaLoss_"):
+        if not model.startswith("iiLoss_"):
             continue
         try:
             lam = float(model.split("_", 1)[1])
@@ -55,18 +55,18 @@ with open(SUMMARY_CSV, newline="") as f:
         lambdas.append(lam)
         ef_maes.append(float(row["Ef_MAE"]))
         ed_maes.append(float(row["Ed_MAE"]))
-        mean_gammas.append(float(row["rms_xi"]))
+        rms_xis.append(float(row["rms_xi"]))
 
 if not lambdas:
-    print("No InterferenceLoss_* rows found in CSV.")
+    print("No iiLoss_* rows found in CSV.")
     sys.exit(1)
 
 # Sort by lambda
-order       = sorted(range(len(lambdas)), key=lambda i: lambdas[i])
-lambdas     = [lambdas[i]     for i in order]
-ef_maes     = [ef_maes[i]     for i in order]
-ed_maes     = [ed_maes[i]     for i in order]
-mean_gammas = [mean_gammas[i] for i in order]
+order   = sorted(range(len(lambdas)), key=lambda i: lambdas[i])
+lambdas = [lambdas[i]  for i in order]
+ef_maes = [ef_maes[i]  for i in order]
+ed_maes = [ed_maes[i]  for i in order]
+rms_xis = [rms_xis[i]  for i in order]
 
 # ── Plot ────────────────────────────────────────────────────────────────────────
 ACCENT = "#2563EB"
@@ -81,7 +81,7 @@ fig, axes = plt.subplots(3, 1, figsize=(7, 11), sharex=True)
 # ── Subplot 1: Ef MAE ──────────────────────────────────────────────────────────
 ax = axes[0]
 ax.plot(lambdas, ef_maes, color=ACCENT, marker=MARKER, ms=MS, lw=LW,
-        label="InterferenceLoss")
+        label="iiLoss")
 for ref_name, ref in REFERENCES.items():
     ax.axhline(ref["Ef_MAE"], color=ref["color"], lw=1.2, ls="--",
                alpha=0.75, label=ref_name)
@@ -93,7 +93,7 @@ ax.grid(True, alpha=0.25)
 # ── Subplot 2: Ed MAE ──────────────────────────────────────────────────────────
 ax = axes[1]
 ax.plot(lambdas, ed_maes, color=ACCENT, marker=MARKER, ms=MS, lw=LW,
-        label="InterferenceLoss")
+        label="iiLoss")
 min_i = ed_maes.index(min(ed_maes))
 ax.scatter([lambdas[min_i]], [ed_maes[min_i]],
            color=ACCENT, edgecolors="black", s=80, zorder=5,
@@ -108,9 +108,9 @@ ax.grid(True, alpha=0.25)
 
 # ── Subplot 3: Mean γ ──────────────────────────────────────────────────────────
 ax = axes[2]
-ax.plot(lambdas, mean_gammas, color=ACCENT, marker=MARKER, ms=MS, lw=LW)
+ax.plot(lambdas, rms_xis, color=ACCENT, marker=MARKER, ms=MS, lw=LW)
 for ref_name, ref in REFERENCES.items():
-    ax.axhline(ref["mean_gamma"], color=ref["color"], lw=1.2, ls="--",
+    ax.axhline(ref["rms_xi"], color=ref["color"], lw=1.2, ls="--",
                alpha=0.75, label=ref_name)
 ax.set_xlabel(r"$\lambda$", fontsize=13)
 ax.set_ylabel(r'$\sqrt{\langle\xi^2\rangle}$', fontsize=13)

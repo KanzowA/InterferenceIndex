@@ -2,7 +2,7 @@ from os.path import dirname, abspath, join
 import json
 from sklearn.model_selection import KFold
 from mlstabilitytest.training.MatminerModel import MatminerModel
-from mlstabilitytest.training.GammaLossNN import GammaLossNN
+from mlstabilitytest.training.iiLossNN import iiLossNN
 from mlstabilitytest.training.EdLossNN import EdLossNN
 
 try:
@@ -23,14 +23,14 @@ data_path = join(base_path, "mp_data", "data")
 # Root of the repository (one level above mlstabilitytest/)
 repo_path = dirname(base_path)
 
-# Dictionary of available models — supports dynamic GammaLoss_<lam> names,
-# e.g. "GammaLoss_0.0", "GammaLoss_0.1", "GammaLoss_0.25", "GammaLoss_0.5"
+# Dictionary of available models — supports dynamic iiLoss_<lam> names,
+# e.g. "iiLoss_0.0", "iiLoss_0.1", "iiLoss_0.25", "iiLoss_0.5"
 class _ModelDict(dict):
     def __missing__(self, key):
-        if key.startswith("GammaLoss_"):
+        if key.startswith("iiLoss_"):
             try:
                 lam = float(key.split("_", 1)[1])
-                return lambda target, l=lam: GammaLossNN(target, lam=l)
+                return lambda target, l=lam: iiLossNN(target, lam=l)
             except ValueError:
                 pass
         if key.startswith("EdLoss_"):
@@ -40,7 +40,7 @@ class _ModelDict(dict):
             except ValueError:
                 pass
         raise KeyError("Unknown model '{}'. Available: {}".format(
-            key, list(self.keys()) + ["GammaLoss_<lam>", "EdLoss_<alpha>"]))
+            key, list(self.keys()) + ["iiLoss_<lam>", "EdLoss_<alpha>"]))
 
 model_dictionary = _ModelDict({
     "Deml":     lambda target: MatminerModel('Deml', target),
@@ -142,7 +142,7 @@ def LiMnTMO(model, target):
     features_train, targets_train, _ = model.preprocess(input_data_all_mp)
 
     # Save training-time state before the test preprocess call overwrites it.
-    # GammaLossNN stores self._data and self._labels during preprocess; fit()
+    # iiLossNN stores self._data and self._labels during preprocess; fit()
     # needs these to reflect the *training* set when building the reaction graph.
     _saved_data   = getattr(model, '_data',   None)
     _saved_labels = getattr(model, '_labels', None)

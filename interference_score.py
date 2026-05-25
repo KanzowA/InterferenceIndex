@@ -31,7 +31,7 @@ Run from the TestStabilityMl directory:
 Output
 ------
   interference_scores.csv   — per-compound scores for every model
-  interference_summary.csv  — MAE, RMSE, mean/median γ per model
+  interference_summary.csv  — MAE, RMSE, mean/median ξ per model
 """
 
 import os
@@ -53,7 +53,7 @@ EF_DFT  = os.path.join(DATA_DIR, "Ef.json")
 MODELS_BASE = ["ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet",
                "Roost", "CGCNN"]
 
-# GammaLoss_* variants are auto-detected at runtime from the ml_data folder.
+# iiLoss_* variants are auto-detected at runtime from the ml_data folder.
 # MODELS is rebuilt in main() — do not edit manually.
 MODELS = list(MODELS_BASE)
 
@@ -164,104 +164,135 @@ def compute_mae_rmse(ml_ef, dft_ef, reference_compounds=None):
     return mae, rmse
 
 
-# ── Plotting (unchanged) ───────────────────────────────────────────────────────
+# ── Plotting ──────────────────────────────────────────────────────────────────
+# Style constants matching figure2_circles.py
+_CMAP    = 'RdBu_r'
+_COL_REF = '#6B7280'   # ξ = 1 reference line
 
-def plot_propagation_circles(results):
+def plot_interference_circles(results, models):
     import matplotlib.pyplot as plt
     import numpy as np
+    from matplotlib.colors import TwoSlopeNorm
+
+    plt.rcParams.update({'font.family': 'sans-serif', 'font.size': 11,
+                         'axes.linewidth': 0.8})
 
     by_model = defaultdict(list)
     for row in results:
         by_model[row["model"]].append(row)
 
-    colors = ["steelblue", "darkorange", "forestgreen",
-              "crimson", "mediumpurple", "sienna", "deeppink", "teal",
-              "goldenrod", "slateblue", "coral", "mediumseagreen"]
-    model_colors = {m: colors[i % len(colors)] for i, m in enumerate(MODELS)}
-
     models_present = [m for m in MODELS if m in by_model]
-    n_models = len(models_present)
+    models_filtered = [m for m in models_present if m in models]
+    n_models = len(models_filtered)
+    if n_models == 0:
+        return
 
-    fig, axes = plt.subplots(n_models, 2, figsize=(14, 6 * n_models))
-    if n_models == 1:
-        axes = [axes]
+    # Grid layout: up to 4 columns
+    n_cols = min(n_models, 3)
+    n_rows = math.ceil(n_models / n_cols)
 
-    for row_idx, model_name in enumerate(models_present):
+    # Shared geometry: common lim across all models so panels are comparable
+    all_N = [r["N"] for m in models_filtered for r in by_model[m]]
+    lim   = math.sqrt(max(all_N)) + 0.2   # top of circle frame = base of histogram
+
+    # Histogram height in data coords (40 % of circle region)
+    HIST_H = lim * 0.40
+    FULL_H = lim + HIST_H
+
+    # Fixed density scale: compute global max across all models
+    hist_max = 0.0
+    for model_name in models_filtered:
+        xis = np.array([r["xi_err"] for r in by_model[model_name]])
+        counts, _ = np.histogram(xis, bins=35, range=(0, lim), density=True)
+        if counts.size:
+            hist_max = max(hist_max, float(counts.max()))
+    HIST_SCALE = HIST_H / hist_max if hist_max > 0 else 1.0
+
+    norm     = TwoSlopeNorm(vmin=0, vcenter=1.0, vmax=math.sqrt(max(all_N)))
+    cmap_obj = plt.get_cmap(_CMAP)
+    arc_theta = np.linspace(0, np.pi / 2, 300)
+
+    tick_vals = [t for t in [0, 1, 2, 3] if t <= lim]
+
+    fig, axes = plt.subplots(n_rows, n_cols,
+                             figsize=(5.5 * n_cols, 5.5 * n_rows),
+                             squeeze=False)
+
+    for idx, model_name in enumerate(models_filtered):
+        ax = axes[idx // n_cols, idx % n_cols]
+
         rows   = by_model[model_name]
-        color  = model_colors.get(model_name, "gray")
-        Ns     = [r["N"] for r in rows]
-        xis = [r["gamma_err"] for r in rows]
-        deltas = [r["delta_err"] for r in rows]
-        thetas = [r["theta_err"] for r in rows]
-        xis_mean = []
-        deltas_mean = []
-        xis_average = []
-        deltas_average = []
-        for i in range(2, 11):
-            thetas_i = [r["theta_err"] for r in rows if r["N"] == i]
-            if not thetas_i:
-                continue
-            mean_theta_i = sum(thetas_i) / len(thetas_i)
-            xis_mean.append(np.sqrt(i) * np.cos(np.radians(mean_theta_i)))
-            deltas_mean.append(np.sqrt(i) * np.sin(np.radians(mean_theta_i)))
+        Ns     = np.array([r["N"]         for r in rows])
+        xis    = np.array([r["xi_err"]    for r in rows])
+        deltas = np.array([r["delta_err"] for r in rows])
 
-            xis_i = [r["gamma_err"] for r in rows if r["N"] == i]
-            average_gamma = sum(xis_i) / len(xis_i)
-            xis_average.append(average_gamma)
-            deltas_average.append(np.sqrt(i) * np.sin(np.arccos(average_gamma / np.sqrt(i))))
-
-        arc = np.linspace(0, np.pi / 2, 300)
-
-        ax = axes[row_idx][0]
+        # Concentric arcs + N labels
         for N_val in sorted(set(Ns)):
-            r = math.sqrt(N_val)
-            ax.plot(r * np.cos(arc), r * np.sin(arc),
-                    color="lightgray", lw=1.0, zorder=0)
-            ax.text(r * np.cos(0.24) + 0.04 - r * 0.003, r * np.sin(0.24),
-                    f"N={N_val}", color="gray", fontsize=7,
-                    va="top", ha="left", rotation=-80)
+            R = math.sqrt(N_val)
+            ax.plot(R * np.cos(arc_theta), R * np.sin(arc_theta),
+                    color='lightgray', lw=1.0, zorder=0)
+            ax.text(R * np.cos(0.24) + 0.04 - R * 0.003,
+                    R * np.sin(0.24),
+                    f'N={N_val}', color='gray', fontsize=7,
+                    va='top', ha='left', rotation=-80)
 
-        ax.scatter(xis, deltas, c=color, s=6, alpha=0.3, label=model_name)
-        ax.scatter(xis_mean, deltas_mean, c='k', s=24, marker='x',
-                   label=r'$\langle\vartheta_N\rangle$ (mean)')
-        ax.scatter(xis_average, deltas_average, c='k', s=24, marker='p',
-                   label=r'$\langle\gamma\rangle$ (mean)')
-        median_theta = np.radians(np.median(np.array(thetas)))
-        max_r = math.sqrt(max(Ns))
-        ax.plot([0, max_r * math.cos(median_theta)],
-                [0, max_r * math.sin(median_theta)],
-                color="gray", lw=1.0, ls=":",
-                label=rf"$\langle\vartheta\rangle$ (median) $= {math.degrees(median_theta):.1f}°$")
-        ax.set_xlabel(r"$\gamma = \sqrt{N}\,|\cos\vartheta|$  (propagation)")
-        ax.set_ylabel(r"$\delta = \sqrt{N}\,|\sin\vartheta|$  (compensation)")
-        ax.set_title(rf"{model_name} — Error geometry ($\gamma^2 + \delta^2 = N$)")
-        ax.set_xlim(-0.05, None)
-        ax.set_ylim(-0.05, None)
-        ax.set_aspect("equal")
-        ax.legend(fontsize=8, markerscale=2)
+        # Scatter coloured by xi
+        ax.scatter(xis, deltas, c=xis, cmap=_CMAP, norm=norm,
+                   s=7, alpha=0.45, zorder=3)
 
-        ax = axes[row_idx][1]
-        rms_xi    = np.sqrt(np.mean(np.array(xis) ** 2))
-        median_xi = np.median(np.array(xis))
-        xi_max    = math.sqrt(max(Ns))
-        ax.hist(xis, bins=30, range=(0, xi_max),
-                color=color, alpha=0.7, density=True)
-        ax.axvline(1.0, color="gray", lw=1.0, ls=":", label=r"$\xi = 1$ (null)")
-        ax.axvline(rms_xi, color="black", lw=1.2, ls="--",
-                   label=rf"$\sqrt{{\langle\xi^2\rangle}} = {rms_xi:.3f}$")
-        ax.axvline(median_xi, color="black", lw=1.0, ls="-.",
-                   label=rf"median $\xi = {median_xi:.3f}$")
-        ax.set_xlabel(r"$\xi$", fontsize=12)
-        ax.set_ylabel(r"$\rho(\xi)$", fontsize=11)
-        ax.set_title(f"{model_name} — $\\xi$ distribution")
-        ax.set_xlim(0, xi_max)
-        ax.legend(fontsize=8)
+        # Per-N RMS-xi diamond
+        first = True
+        for N_val in sorted(set(Ns)):
+            xis_N = xis[Ns == N_val]
+            rms_N = math.sqrt(float(np.mean(xis_N ** 2)))
+            eta_N = math.sqrt(max(N_val - rms_N ** 2, 0))
+            label = r'$\sqrt{\langle\xi^2\rangle}_N$' if first else None
+            ax.scatter([rms_N], [eta_N], color='black', s=30,
+                       marker='D', zorder=5, label=label)
+            first = False
 
-    plt.suptitle("Propagation Score — all models", fontsize=14, y=1.001)
+        # Histogram bars floating above the frame (clip_on=False)
+        rms_xi = math.sqrt(float(np.mean(xis ** 2)))
+        counts, edges = np.histogram(xis, bins=35, range=(0, lim), density=True)
+        for left, right, h in zip(edges[:-1], edges[1:], counts):
+            xi_mid = (left + right) / 2
+            bar_h  = h * HIST_SCALE
+            ax.bar(left, bar_h, width=right - left, bottom=lim,
+                   color=cmap_obj(norm(xi_mid)),
+                   align='edge', edgecolor='none', alpha=0.85,
+                   zorder=3, clip_on=False)
+
+        # Reference lines through circle region and histogram
+        ax.plot([1.0, 1.0], [0, FULL_H], color=_COL_REF, lw=0.9, ls=':',
+                alpha=0.7, zorder=4, clip_on=False, label=r'$\xi = 1$')
+        ax.plot([rms_xi, rms_xi], [0, FULL_H], color='black', lw=1.2, ls='--',
+                zorder=5, clip_on=False,
+                label=r'$\sqrt{\langle\xi^2\rangle} = ' + rf'{rms_xi:.3f}$')
+
+        # Frame wraps circle region only; histogram sits outside above
+        ax.set_xlim(0, lim)
+        ax.set_ylim(0, lim)
+        ax.set_xticks(tick_vals)
+        ax.set_yticks(tick_vals)
+        ax.set_xlabel(r'$\xi = \sqrt{N}\cos\theta$', fontsize=11)
+        ax.set_ylabel(r'$\eta = \sqrt{N}\sin\theta$', fontsize=11)
+        ax.set_aspect('equal')
+        ax.legend(fontsize=8, loc='upper right')
+
+        # Model name above the histogram (no letter label)
+        ax.text(1.0, 1.1, model_name,
+                transform=ax.transAxes,
+                fontsize=12, fontweight='bold', ha='right', va='bottom',
+                clip_on=False)
+
+    # Hide any unused axes in the grid
+    for idx in range(n_models, n_rows * n_cols):
+        axes[idx // n_cols, idx % n_cols].set_visible(False)
+        
     plt.tight_layout()
-    plt.savefig("propagation_circles.png", dpi=150, bbox_inches="tight")
+    plt.savefig("interference_circles.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print("Figure saved to propagation_circles.png")
+    print("Figure saved to interference_circles.png")
 
 
 def plot_score_vs_error(results, hullout):
@@ -286,7 +317,7 @@ def plot_score_vs_error(results, hullout):
     for row_idx, model_name in enumerate(models_present):
         rows  = by_model[model_name]
         color = model_colors.get(model_name, "gray")
-        xis = np.array([r["gamma_err"] for r in rows])
+        xis = np.array([r["xi_err"] for r in rows])
         ed_dft = np.array([r["Ed_DFT"]    for r in rows])
         stable = np.array([r["stability"]  for r in rows])
 
@@ -295,7 +326,7 @@ def plot_score_vs_error(results, hullout):
             mask = stable == is_stable
             ax.scatter(xis[mask], np.abs(ed_dft[mask]),
                        c=color, marker=marker, s=10, alpha=0.3, label=label)
-        ax.set_xlabel(r"$\gamma$ (interference score, error-based)")
+        ax.set_xlabel(r"$\xi$ (interference index, error-based)")
         ax.set_ylabel(r"$|\Delta H_d^{DFT}|$ (eV/atom)")
         ax.set_title(f"{model_name} — score vs. |Ed|")
         ax.legend(fontsize=8, markerscale=2)
@@ -305,14 +336,14 @@ def plot_score_vs_error(results, hullout):
         centers = 0.5 * (bins[:-1] + bins[1:])
         for is_stable, ls, label in [(True, '-', 'stable'), (False, '--', 'unstable')]:
             mask = stable == is_stable
-            g_sub  = xis[mask]
+            xi_sub = xis[mask]
             ed_sub = np.abs(ed_dft[mask])
-            means  = [g_sub[(ed_sub >= bins[i]) & (ed_sub < bins[i+1])].mean()
+            means  = [xi_sub[(ed_sub >= bins[i]) & (ed_sub < bins[i+1])].mean()
                       for i in range(len(bins) - 1)]
             means  = [m if not np.isnan(m) else None for m in means]
             ax.plot(centers, means, color=color, ls=ls, lw=1.5, label=label)
         ax.set_xlabel(r"$|\Delta H_d^{DFT}|$ (eV/atom)")
-        ax.set_ylabel(r"mean $\gamma$")
+        ax.set_ylabel(r"mean $\xi$")
         ax.set_title(f"{model_name} — mean score vs. |Ed| (binned)")
         ax.legend(fontsize=8)
 
@@ -350,7 +381,7 @@ def main():
         HULLOUT = candidate
     print(f"Using hullout: {HULLOUT}\n")
 
-    # ── Auto-detect GammaLoss_* and EdLoss_* variants ─────────────────────────
+    # ── Auto-detect iiLoss_* and EdLoss_* variants ────────────────────────────
     global MODELS
 
     def _detect_variants(prefix, ml_dir):
@@ -366,17 +397,17 @@ def main():
         variants.sort(key=lambda n: float(n.split("_", 1)[1]))
         return variants
 
-    gamma_variants = _detect_variants("GammaLoss_", ML_DIR)
-    ed_variants    = _detect_variants("EdLoss_",    ML_DIR)
+    ii_variants = _detect_variants("iiLoss_", ML_DIR)
+    ed_variants = _detect_variants("EdLoss_", ML_DIR)
 
-    MODELS = list(MODELS_BASE) + gamma_variants + ed_variants
+    MODELS = list(MODELS_BASE) + ii_variants + ed_variants
 
-    if gamma_variants:
-        print(f"Auto-detected GammaLoss variants: {gamma_variants}")
+    if ii_variants:
+        print(f"Auto-detected iiLoss variants: {ii_variants}")
     if ed_variants:
-        print(f"Auto-detected EdLoss variants:    {ed_variants}")
-    if not gamma_variants and not ed_variants:
-        print("No GammaLoss_* or EdLoss_* variants found in ml_data folder.")
+        print(f"Auto-detected EdLoss variants: {ed_variants}")
+    if not ii_variants and not ed_variants:
+        print("No iiLoss_* or EdLoss_* variants found in ml_data folder.")
 
     print("Loading DFT reference data …")
     hullout = load_json(HULLOUT)
@@ -410,7 +441,7 @@ def main():
         # ── MAE / RMSE over all 85,014 compounds in hullout ──────────────
         mae, rmse = compute_mae_rmse(ml_ef, dft_ef_all, reference_compounds=list(dft_ef_all.keys()))
 
-        # ── Per-compound γ scores and Ed errors ───────────────────────────
+        # ── Per-compound ξ scores and Ed errors ───────────────────────────
         scores    = []
         ed_errors = []   # Ed_ML - Ed_DFT  per compound
         n_ok, n_skip = 0, 0
@@ -425,7 +456,7 @@ def main():
                 n_skip += 1
                 continue
 
-            gamma_err, N, signed_sum = result_err
+            xi_err, N, signed_sum = result_err
             if EXCLUDE_N1 and N == 1:
                 n_skip += 1
                 continue
@@ -434,15 +465,15 @@ def main():
             ed_err = -signed_sum
 
             sqrt_N    = math.sqrt(N)
-            theta_err = math.acos(min(gamma_err / sqrt_N, 1.0))
+            theta_err = math.acos(min(xi_err / sqrt_N, 1.0))
             delta_err = sqrt_N * math.sin(theta_err)
 
-            gamma_ml  = result_ml[0]
-            theta_ml  = math.acos(min(gamma_ml / sqrt_N, 1.0))
-            delta_ml  = sqrt_N * math.sin(theta_ml)
+            xi_ml    = result_ml[0]
+            theta_ml = math.acos(min(xi_ml / sqrt_N, 1.0))
+            delta_ml = sqrt_N * math.sin(theta_ml)
 
             n_ok += 1
-            scores.append(gamma_err)
+            scores.append(xi_err)
             ed_errors.append(ed_err)
             results.append({
                 "model":     model,
@@ -451,10 +482,10 @@ def main():
                 "Ef_DFT":    entry["Ef"],
                 "Ed_DFT":    entry["Ed"],
                 "Ed_err":    round(ed_err, 6),
-                "gamma_err": round(gamma_err, 6),
+                "xi_err":    round(xi_err, 6),
                 "delta_err": round(delta_err, 6),
                 "theta_err": round(math.degrees(theta_err), 4),
-                "gamma_ml":  round(gamma_ml, 6),
+                "xi_ml":     round(xi_ml, 6),
                 "delta_ml":  round(delta_ml, 6),
                 "theta_ml":  round(math.degrees(theta_ml), 4),
                 "N":         N,
@@ -472,8 +503,8 @@ def main():
     # ── Write per-compound CSV ─────────────────────────────────────────────────
     out_csv = "interference_scores.csv"
     fieldnames = ["model", "compound", "stability", "Ef_DFT", "Ed_DFT", "Ed_err",
-                  "gamma_err", "delta_err", "theta_err",
-                  "gamma_ml",  "delta_ml",  "theta_ml",
+                  "xi_err",   "delta_err", "theta_err",
+                  "xi_ml",    "delta_ml",  "theta_ml",
                   "N", "sqrt_N"]
     with open(out_csv, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
@@ -490,15 +521,15 @@ def main():
         for model, s in summary.items():
             sc      = sorted(s["scores"])
             n       = len(sc)
-            rms_g   = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
-            med_g   = sc[n // 2] if n else float('nan')
+            rms_xi  = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
+            med_xi  = sc[n // 2] if n else float('nan')
             w.writerow([model, s["n"],
                         round(s["mae"],     4),
                         round(s["rmse"],    4),
                         round(s["ed_mae"],  4),
                         round(s["ed_rmse"], 4),
-                        round(rms_g,        4),
-                        round(med_g,        4)])
+                        round(rms_xi,       4),
+                        round(med_xi,       4)])
     print(f"Summary written to              {sum_csv}")
 
     # ── Print comparison table ─────────────────────────────────────────────────
@@ -512,22 +543,22 @@ def main():
     print(col.format("Model", "N", "Ef MAE", "Ef RMSE", "Ed MAE", "Ed RMSE", "RMS ξ", "Median ξ"))
     print(sep)
     for model, s in summary.items():
-        sc    = sorted(s["scores"])
-        n     = len(sc)
-        rms_g = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
-        med_g = sc[n // 2] if n else float('nan')
+        sc     = sorted(s["scores"])
+        n      = len(sc)
+        rms_xi = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
+        med_xi = sc[n // 2] if n else float('nan')
         print(col.format(
             model, s["n"],
             f"{s['mae']:.4f}",
             f"{s['rmse']:.4f}",
             f"{s['ed_mae']:.4f}",
             f"{s['ed_rmse']:.4f}",
-            f"{rms_g:.4f}",
-            f"{med_g:.4f}",
+            f"{rms_xi:.4f}",
+            f"{med_xi:.4f}",
         ))
     print(sep)
 
-    plot_propagation_circles(results)
+    plot_interference_circles(results, ['ElFrac', 'Meredig', 'Magpie', 'AutoMat', 'ElemNet', 'Roost'])
 
 
 if __name__ == "__main__":
