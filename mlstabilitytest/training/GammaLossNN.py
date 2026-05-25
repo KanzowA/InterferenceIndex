@@ -1,24 +1,29 @@
 """
-GammaLossNN — ElementFraction MLP trained with a normalised (1−R²) + γ²/N loss.
+GammaLossNN — ElementFraction MLP trained with a normalised MSE + γ²/N loss.
 
 Loss:
-    L = (1 − λ) · MSE_Ef / MSE_init  +  λ · γ² / γ²_init
+    L = (1 − λ) · MSE_Ef / MSE_ref  +  λ · γ² / γ²_ref
 
-where
-    MSE_init = MSE of the untrained network  (fixed scalar per fold)
-    γ²_init  = mean γ² of the untrained network  (fixed scalar per fold)
-    γ²_r     = (Σ_k ν_k δ_k)² / (Σ_k (ν_k δ_k)² + ε)   (size-extensive γ²)
-    δ_i      = Ef_pred_i − Ef_DFT_i
+where MSE_ref and γ²_ref are periodically refreshed reference values so that
+the 90/10 (or whatever λ) weighting is maintained throughout training, not
+just at epoch 0.
 
-Both terms equal 1.0 at epoch 0, so λ is a genuine fractional weight throughout
-training.  γ² retains its N factor (γ = √N |cos θ|, size-extensive) — the loss
-is normalised by γ²_init rather than by N, keeping the loss consistent with the
-score definition without sacrificing size extensivity.
+Architecture:
+    ResidualMLP — input → projection → ResBlock × L → output
+    LayerNorm instead of BatchNorm (no running stats, works cleanly with
+    full-batch and at eval time).
+    Skip connections at every layer so the subtle γ² gradient signal
+    has short paths back to early weights.
 
-Suggested λ sweep with normalised loss: 0.1, 0.2, 0.3, 0.5, 0.7
+Training improvements over v1:
+    warmup_frac  — first fraction of epochs trains with pure MSE (λ=0),
+                   giving Ef accuracy a head start before γ² steers.
+    renorm_every — recompute MSE_ref and γ²_ref every N epochs so the
+                   λ fractional weighting stays honest as MSE decays.
+    grad_clip    — clip gradient norm to stabilise the coupled γ² updates.
 
 Plugs directly into the existing Bartel-et-al. infrastructure:
-    python train_models.py allMP Ef GammaLoss_0.3
+    python train_models.py allMP Ef GammaLoss_0.1
     python interference_score.py
 """
 
@@ -30,7 +35,7 @@ import torch.nn as nn
 try:
     from pymatgen.core import Composition
 except ImportError:
-    from pymatgen import Composition  # older pymatgen
+    from pymatgen import Composition
 
 from matminer.featurizers.composition import ElementFraction
 from mlstabilitytest.training.MLModel import MLModel
@@ -39,33 +44,81 @@ from mlstabilitytest.training.MLModel import MLModel
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-MAX_RXN_SIZE = 10   # maximum compounds per decomposition reaction in hullout.json
+MAX_RXN_SIZE = 10
 
 
 # ---------------------------------------------------------------------------
-# MLP definition
+# Architecture
 # ---------------------------------------------------------------------------
-class _MLP(nn.Module):
-    """Simple feed-forward net:  input → [Linear → BN → ReLU → Dropout] × L → Linear → scalar"""
 
-    def __init__(self, input_dim, hidden=(512, 256, 128), dropout=0.15):
+class _ResBlock(nn.Module):
+    """
+    Single residual block: main path (Linear → LN → ReLU → Dropout)
+    with a skip projection for dimension changes.
+
+        out = ReLU( LN( W·x ) ) + W_skip·x
+
+    Using pre-activation style (LN before activation) stabilises
+    gradient flow through many blocks.
+    """
+
+    def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0):
         super().__init__()
-        layers = []
-        in_dim = input_dim
-        for h in hidden:
-            layers += [nn.Linear(in_dim, h), nn.BatchNorm1d(h), nn.ReLU(),
-                       nn.Dropout(p=dropout)]
-            in_dim = h
-        layers.append(nn.Linear(in_dim, 1))
-        self.net = nn.Sequential(*layers)
+        self.main = nn.Sequential(
+            nn.Linear(in_dim, out_dim),
+            nn.LayerNorm(out_dim),
+            nn.ReLU(),
+            nn.Dropout(p=dropout) if dropout > 0.0 else nn.Identity(),
+        )
+        # Skip: project if dims differ, else pass-through
+        self.skip = (nn.Linear(in_dim, out_dim, bias=False)
+                     if in_dim != out_dim else nn.Identity())
+        self.act  = nn.ReLU()
 
-    def forward(self, x):
-        return self.net(x).squeeze(1)   # (N,)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.act(self.main(x) + self.skip(x))
+
+
+class _ResidualMLP(nn.Module):
+    """
+    input_dim → Linear(input_dim, hidden[0]) → LN → ReLU
+              → ResBlock(hidden[0] → hidden[1])
+              → ResBlock(hidden[1] → hidden[2])
+              → ...
+              → Linear(hidden[-1], 1)
+    """
+
+    def __init__(self, input_dim: int,
+                 hidden: tuple = (1024, 512, 256, 128),
+                 dropout: float = 0.0):
+        super().__init__()
+
+        # Input projection (no skip — maps from raw features)
+        self.input_proj = nn.Sequential(
+            nn.Linear(input_dim, hidden[0]),
+            nn.LayerNorm(hidden[0]),
+            nn.ReLU(),
+        )
+
+        # Residual blocks
+        blocks = []
+        for in_h, out_h in zip(hidden[:-1], hidden[1:]):
+            blocks.append(_ResBlock(in_h, out_h, dropout=dropout))
+        self.blocks = nn.Sequential(*blocks)
+
+        # Output
+        self.out = nn.Linear(hidden[-1], 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.input_proj(x)
+        x = self.blocks(x)
+        return self.out(x).squeeze(1)
 
 
 # ---------------------------------------------------------------------------
-# GammaLossNN — implements MLModel interface
+# GammaLossNN
 # ---------------------------------------------------------------------------
+
 class GammaLossNN(MLModel):
     """
     ElementFraction MLP with γ²-regularised loss.
@@ -73,18 +126,30 @@ class GammaLossNN(MLModel):
     Parameters
     ----------
     target : str
-        Key in the input dict to use as the regression target ('Ef' or 'Ed').
+        Regression target key ('Ef' or 'Ed').
     lam : float
         Weight of γ² loss term (0 = pure MSE, 1 = pure γ²).
-        Recommended sweep: 0.0, 0.05, 0.1, 0.2, 0.5.
     eps : float
-        Stabiliser added to the γ² denominator (eV²/atom²).
+        Stabiliser in γ² denominator (eV²/atom²).
     hidden : tuple of int
-        Hidden layer sizes.
+        Hidden layer widths. Default: (1024, 512, 256, 128).
+    dropout : float
+        Dropout probability (0 = no dropout). Default: 0.0.
     lr : float
-        Adam learning rate.
+        Adam initial learning rate.
     epochs : int
-        Training epochs (full-batch).
+        Total training epochs (full-batch).
+    warmup_frac : float
+        Fraction of epochs to train with λ=0 (pure MSE) before
+        ramping to the target λ.  E.g. 0.1 = 50 warmup epochs
+        out of 500.  Gives Ef accuracy a head start.
+    renorm_every : int
+        Recompute MSE_ref and γ²_ref every N epochs so the
+        (1-λ)/λ weighting stays honest as MSE decays during
+        training.  Set to 0 to use fixed epoch-0 references
+        (original behaviour).
+    grad_clip : float
+        Max gradient norm for clipping (0 = no clipping).
     device : str or None
         'cuda', 'cpu', or None (auto-detect).
     """
@@ -93,28 +158,33 @@ class GammaLossNN(MLModel):
 
     def __init__(
         self,
-        target='Ef',
-        lam=0.25,
-        eps=1e-4,
-        hidden=(1024, 512, 256),
-        lr=1e-3,
-        epochs=300,
-        device=None,
+        target       = 'Ef',
+        lam          = 0.1,
+        eps          = 1e-4,
+        hidden       = (1024, 512, 256, 128),
+        dropout      = 0.0,
+        lr           = 1e-3,
+        epochs       = 500,
+        warmup_frac  = 0.1,
+        renorm_every = 50,
+        grad_clip    = 1.0,
+        device       = None,
     ):
-        self.target  = target
-        self.lam     = lam
-        self.eps     = eps
-        self.hidden  = tuple(hidden)
-        self.lr      = lr
-        self.epochs  = epochs
-        self.device  = (
-            device if device
-            else ('cuda' if torch.cuda.is_available() else 'cpu')
-        )
+        self.target       = target
+        self.lam          = lam
+        self.eps          = eps
+        self.hidden       = tuple(hidden)
+        self.dropout      = dropout
+        self.lr           = lr
+        self.epochs       = epochs
+        self.warmup_frac  = warmup_frac
+        self.renorm_every = renorm_every
+        self.grad_clip    = grad_clip
+        self.device       = (device if device
+                             else ('cuda' if torch.cuda.is_available() else 'cpu'))
 
-        # Set in preprocess(); used by fit() to recover reaction graph
-        self._labels = None   # (N_total,) np.ndarray of formula strings
-        self._data   = None   # full hullout dict passed to preprocess()
+        self._labels = None
+        self._data   = None
         self._net    = None
 
     # ------------------------------------------------------------------
@@ -123,27 +193,14 @@ class GammaLossNN(MLModel):
     def preprocess(self, X):
         """
         Featurise with ElementFraction.
-
-        The returned feature array has an extra FIRST column containing the
-        original row index.  This threads through KFold's numpy slicing so
-        that fit() can recover which formulas — and thus which reactions —
-        belong to the current training fold without any changes to process.py.
-
-        Parameters
-        ----------
-        X : dict  {formula: {"Ef": float, "Ed": float, "rxn": str, ...}}
-
-        Returns
-        -------
-        features_with_idx : np.ndarray  (N, 1+118)   col 0 = row index
-        targets           : np.ndarray  (N,)
-        labels            : np.ndarray  (N,)  formula strings
+        Returns features with prepended index column (col 0 = row index)
+        so that KFold slicing in process.py doesn't need modification.
         """
-        self._data = X   # store for reaction lookup in fit()
+        self._data = X
 
         featurizer = ElementFraction()
-
         labels, targets, rows = [], [], []
+
         for formula, entry in X.items():
             try:
                 comp = Composition(formula)
@@ -154,45 +211,26 @@ class GammaLossNN(MLModel):
             except Exception:
                 continue
 
-        self._labels = np.array(labels)
-        features     = np.array(rows, dtype=np.float32)   # (N, 118)
-        targets_arr  = np.array(targets, dtype=np.float32)
+        self._labels   = np.array(labels)
+        features       = np.array(rows,    dtype=np.float32)
+        targets_arr    = np.array(targets, dtype=np.float32)
 
-        # Prepend index column
-        N       = len(labels)
-        idx_col = np.arange(N, dtype=np.float32).reshape(-1, 1)
-        features_with_idx = np.hstack([idx_col, features])   # (N, 119)
+        idx_col            = np.arange(len(labels), dtype=np.float32).reshape(-1, 1)
+        features_with_idx  = np.hstack([idx_col, features])   # (N, 119)
 
         return features_with_idx, targets_arr, self._labels
 
     def fit(self, X, Y):
-        """
-        Train the network.
-
-        Parameters
-        ----------
-        X : np.ndarray  (N_train, 119)  — col 0 = original row index
-        Y : np.ndarray  (N_train,)      — target values
-
-        Returns
-        -------
-        self
-        """
         dev = torch.device(self.device)
 
-        # ---- Recover indices and features --------------------------------
-        train_indices = X[:, 0].astype(int)        # which rows from preprocess()
-        X_feat        = X[:, 1:].astype(np.float32)  # (N_train, 118)
-        N_train       = len(train_indices)
+        # -- Unpack index column -------------------------------------------
+        train_indices = X[:, 0].astype(int)
+        X_feat        = X[:, 1:].astype(np.float32)
 
-        # Map formula → position within this training fold
-        train_labels      = self._labels[train_indices]
-        label_to_pos      = {lbl: i for i, lbl in enumerate(train_labels)}
+        train_labels  = self._labels[train_indices]
+        label_to_pos  = {lbl: i for i, lbl in enumerate(train_labels)}
 
-        # ---- Build padded reaction tensors --------------------------------
-        # R_idx   (M, K): compound positions in the training fold (0-padded)
-        # R_coeff (M, K): stoichiometric coefficients (0-padded)
-        # R_mask  (M, K): True for real entries
+        # -- Build reaction tensors ----------------------------------------
         R_idx_list, R_coeff_list, R_mask_list = [], [], []
 
         for lbl in train_labels:
@@ -202,15 +240,14 @@ class GammaLossNN(MLModel):
                 continue
             pairs = _parse_rxn(rxn_str, label_to_pos)
             if len(pairs) < 2:
-                continue   # skip reactions where <2 members are in this fold
+                continue
 
             idx_row   = [p[0] for p in pairs]
             coeff_row = [p[1] for p in pairs]
             mask_row  = [True] * len(pairs)
 
-            # Pad to MAX_RXN_SIZE
             pad = MAX_RXN_SIZE - len(pairs)
-            idx_row   += [0] * pad
+            idx_row   += [0]   * pad
             coeff_row += [0.0] * pad
             mask_row  += [False] * pad
 
@@ -219,20 +256,21 @@ class GammaLossNN(MLModel):
             R_mask_list.append(mask_row[:MAX_RXN_SIZE])
 
         if R_idx_list:
-            R_idx   = torch.tensor(R_idx_list,   dtype=torch.long,  device=dev)  # (M, K)
+            R_idx   = torch.tensor(R_idx_list,   dtype=torch.long,    device=dev)
             R_coeff = torch.tensor(R_coeff_list, dtype=torch.float32, device=dev)
-            R_mask  = torch.tensor(R_mask_list,  dtype=torch.float32, device=dev)  # 1/0
+            R_mask  = torch.tensor(R_mask_list,  dtype=torch.float32, device=dev)
             has_rxn = True
         else:
             has_rxn = False
-            print("  [GammaLossNN] Warning: no reactions found in training fold; "
-                  "falling back to pure MSE.")
+            print("  [GammaLossNN] Warning: no reactions in fold — pure MSE.")
 
-        # ---- Build network ------------------------------------------------
+        # -- Network, optimiser, scheduler ---------------------------------
         input_dim = X_feat.shape[1]
-        self._net = _MLP(input_dim, self.hidden).to(dev)
-        optimizer = torch.optim.Adam(self._net.parameters(), lr=self.lr,
-                                     weight_decay=1e-4)
+        self._net = _ResidualMLP(input_dim, self.hidden, self.dropout).to(dev)
+
+        optimizer = torch.optim.Adam(
+            self._net.parameters(), lr=self.lr, weight_decay=1e-4
+        )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=self.epochs, eta_min=self.lr * 0.01
         )
@@ -240,102 +278,120 @@ class GammaLossNN(MLModel):
         X_t = torch.tensor(X_feat, dtype=torch.float32, device=dev)
         Y_t = torch.tensor(Y,      dtype=torch.float32, device=dev)
 
-        # ---- Normalisation constants (fixed for this fold) ----------------
-        # Both terms are normalised by their value at epoch 0 so that:
-        #   - mse_loss  = MSE / MSE_init  → 1.0 at epoch 0
-        #   - gamma_loss = γ² / γ²_init  → 1.0 at epoch 0
-        # λ is then a genuine fractional weight throughout training.
-        # γ² keeps its N factor (size-extensive), consistent with the score
-        # definition γ = √N |cos θ|.  We normalise by γ²_init rather than
-        # by N, so the loss and the reported score share the same geometry.
-        var_y = Y_t.var(unbiased=False).clamp(min=1e-6)
-        with torch.no_grad():
-            _pred0  = self._net(X_t)
-            _delta0 = _pred0 - Y_t
-            mse_init = (_delta0 ** 2).mean().clamp(min=var_y)
+        # -- Warmup schedule -----------------------------------------------
+        # Phase 1: first warmup_frac of epochs → λ_eff = 0 (pure MSE)
+        # Phase 2: next warmup_frac of epochs  → λ_eff ramps 0 → λ
+        # Phase 3: remainder                   → λ_eff = λ
+        warmup_end  = int(self.warmup_frac * self.epochs)
+        ramp_end    = int(2 * self.warmup_frac * self.epochs)
 
-            if has_rxn:
-                _c0   = R_coeff * _delta0[R_idx] * R_mask
-                _num0 = _c0.sum(dim=1) ** 2
-                _den0 = (_c0 ** 2).sum(dim=1) + self.eps
-                gamma2_init = (_num0 / _den0).mean().clamp(min=1e-6)
-            else:
-                gamma2_init = torch.ones(1, device=dev)
+        def effective_lam(epoch: int) -> float:
+            if epoch < warmup_end:
+                return 0.0
+            if epoch < ramp_end:
+                return self.lam * (epoch - warmup_end) / max(ramp_end - warmup_end, 1)
+            return self.lam
 
-        # ---- Training loop (full-batch) -----------------------------------
-        # Full-batch is required: γ² needs to see complete reactions in one
-        # forward pass.  68 K compounds × 118 features ≈ 30 MB — fits easily.
+        # -- Initial reference values --------------------------------------
+        mse_ref, gamma2_ref = self._compute_refs(
+            X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
+        )
+
+        # -- Training loop (full-batch) ------------------------------------
         self._net.train()
         for epoch in range(self.epochs):
+
+            # Refresh normalisation references periodically
+            if (self.renorm_every > 0
+                    and epoch > 0
+                    and epoch % self.renorm_every == 0):
+                mse_ref, gamma2_ref = self._compute_refs(
+                    X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
+                )
+
+            lam_eff = effective_lam(epoch)
+
             optimizer.zero_grad()
 
-            pred  = self._net(X_t)          # (N_train,)
-            delta = pred - Y_t              # per-compound errors
+            pred  = self._net(X_t)
+            delta = pred - Y_t
 
-            # -- Normalised MSE:  MSE / MSE_init  (= 1.0 at epoch 0)
-            mse_loss = (delta ** 2).mean() / mse_init
+            mse_loss = (delta ** 2).mean() / mse_ref
 
-            # -- Normalised γ²:  γ² / γ²_init  (= 1.0 at epoch 0)
-            #    γ²_r = (Σ c)² / (Σ c² + ε)  retains the N factor so the
-            #    loss is consistent with the size-extensive score definition.
-            if has_rxn:
-                with torch.no_grad() if self.lam == 0 else torch.enable_grad():
-                    c          = R_coeff * delta[R_idx]   # (M, K)
-                    c          = c * R_mask               # zero padding
-                    num        = c.sum(dim=1) ** 2        # (M,)
-                    den        = (c ** 2).sum(dim=1) + self.eps
-                    gamma_loss = (num / den).mean() / gamma2_init
+            if has_rxn and lam_eff > 0:
+                c          = R_coeff * delta[R_idx] * R_mask
+                num        = c.sum(dim=1) ** 2
+                den        = (c ** 2).sum(dim=1) + self.eps
+                gamma_loss = (num / den).mean() / gamma2_ref
             else:
                 gamma_loss = torch.zeros(1, device=dev).squeeze()
 
-            loss = (1.0 - self.lam) * mse_loss + self.lam * gamma_loss
+            loss = (1.0 - lam_eff) * mse_loss + lam_eff * gamma_loss
             loss.backward()
+
+            if self.grad_clip > 0:
+                nn.utils.clip_grad_norm_(self._net.parameters(), self.grad_clip)
+
             optimizer.step()
             scheduler.step()
 
             if epoch % 50 == 0 or epoch == self.epochs - 1:
-                msg = (
-                    f'  [GammaLossNN] epoch {epoch:>4d} | '
-                    f'loss={loss.item():.5f}  '
-                    f'MSE/MSE₀={mse_loss.item():.5f}'
-                )
-                if self.lam > 0 and has_rxn:
-                    msg += f'  γ²/γ²₀={gamma_loss.item():.5f}'
+                phase = ('warmup' if epoch < warmup_end
+                         else 'ramp' if epoch < ramp_end
+                         else 'train')
+                msg = (f'  [GammaLossNN] ep {epoch:>4d} [{phase}] '
+                       f'loss={loss.item():.5f}  '
+                       f'MSE/ref={mse_loss.item():.5f}  '
+                       f'λ_eff={lam_eff:.3f}')
+                if lam_eff > 0 and has_rxn:
+                    msg += f'  γ²/ref={gamma_loss.item():.5f}'
                 print(msg)
 
         self._net.eval()
         return self
 
     def predict(self, X):
-        """
-        Parameters
-        ----------
-        X : np.ndarray  (N_test, 119)  — col 0 = index (ignored), cols 1.. = features
-
-        Returns
-        -------
-        list of float
-        """
-        dev   = torch.device(self.device)
-        X_t   = torch.tensor(X[:, 1:], dtype=torch.float32, device=dev)
+        dev = torch.device(self.device)
+        X_t = torch.tensor(X[:, 1:], dtype=torch.float32, device=dev)
         with torch.no_grad():
             preds = self._net(X_t).cpu().numpy()
         return [float(v) for v in preds]
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _compute_refs(self, X_t, Y_t, R_idx, R_coeff, R_mask,
+                      has_rxn, dev):
+        """
+        Compute fresh MSE_ref and γ²_ref from current model predictions.
+        Called at epoch 0 and every renorm_every epochs so that the
+        (1-λ)/λ weighting stays calibrated as MSE decays during training.
+        """
+        var_y = Y_t.var(unbiased=False).clamp(min=1e-6)
+        with torch.no_grad():
+            pred0  = self._net(X_t)
+            delta0 = pred0 - Y_t
+            mse_ref = (delta0 ** 2).mean().clamp(min=var_y)
+
+            if has_rxn:
+                c0          = R_coeff * delta0[R_idx] * R_mask
+                num0        = c0.sum(dim=1) ** 2
+                den0        = (c0 ** 2).sum(dim=1) + self.eps
+                gamma2_ref  = (num0 / den0).mean().clamp(min=1e-6)
+            else:
+                gamma2_ref = torch.ones(1, device=dev)
+
+        return mse_ref, gamma2_ref
 
 
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 def _parse_rxn(rxn_str, label_to_pos):
     """
-    Parse a reaction string like '0.6667_Ac + 0.3333_Ac1Ag3' into
-    [(position, coeff), ...] for compounds present in label_to_pos.
-
-    Coefficients represent the fraction of each end-member in the
-    decomposition reaction (all positive; the compound itself is on the
-    left-hand side, so its signed contribution is -1, but since we're
-    computing errors relative to DFT, we can use unsigned coefficients —
-    the sign convention for δ is already handled by the residual).
+    Parse '0.6667_Ac + 0.3333_AcAg' into [(position, coeff), ...]
+    for compounds present in label_to_pos.
     """
     pairs = []
     for token in rxn_str.split('+'):

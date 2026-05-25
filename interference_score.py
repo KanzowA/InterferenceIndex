@@ -80,7 +80,14 @@ def parse_rxn(rxn_str):
 
 
 def is_element(formula):
-    return not any(ch.isdigit() for ch in formula)
+    """True only for single-element formulas (Fe, Li, O, Fe2, S8, ...).
+    The old implementation (no digits → elemental) incorrectly flagged
+    binary 1:1 compounds like LiF, NaCl, AcAg as elemental — causing
+    ~2,100 compounds to be silently excluded from interference scoring.
+    """
+    import re
+    symbols = re.findall(r'[A-Z][a-z]?', formula)
+    return len(set(symbols)) == 1
 
 
 def num_atoms(formula):
