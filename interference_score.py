@@ -326,14 +326,29 @@ def plot_score_vs_error(results, hullout):
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
-    # ── Parse optional split argument ─────────────────────────────────────────
-    split = sys.argv[1] if len(sys.argv) > 1 else "allMP"
-    if split not in ("allMP", "allMP_single"):
-        print("Usage: python interference_score.py [allMP|allMP_single]")
-        sys.exit(1)
+    # ── Parse arguments ───────────────────────────────────────────────────────
+    import argparse
+    parser = argparse.ArgumentParser(description="Compute interference scores for ML models.")
+    parser.add_argument("split", nargs="?", default="allMP",
+                        help="Data split to evaluate (default: allMP)")
+    parser.add_argument("--hullout", default=None,
+                        help="Path to hullout JSON file (default: mp_data/data/hullout.json). "
+                             "Use hullout_current.json for 2026 MP data.")
+    args = parser.parse_args()
+    split = args.split
 
     ML_DIR = os.path.join(REPO_DIR, "ml_data", "Ef", split)
     print(f"Using split: {split}  →  {ML_DIR}\n")
+
+    # Override HULLOUT path if --hullout was given
+    global HULLOUT
+    if args.hullout:
+        # Accept both absolute paths and bare filenames (resolved relative to REPO_DIR)
+        candidate = args.hullout
+        if not os.path.isabs(candidate):
+            candidate = os.path.join(REPO_DIR, candidate)
+        HULLOUT = candidate
+    print(f"Using hullout: {HULLOUT}\n")
 
     # ── Auto-detect GammaLoss_* and EdLoss_* variants ─────────────────────────
     global MODELS

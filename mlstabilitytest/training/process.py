@@ -20,6 +20,9 @@ except ImportError:
 base_path = dirname(dirname(abspath(__file__)))
 data_path = join(base_path, "mp_data", "data")
 
+# Root of the repository (one level above mlstabilitytest/)
+repo_path = dirname(base_path)
+
 # Dictionary of available models — supports dynamic GammaLoss_<lam> names,
 # e.g. "GammaLoss_0.0", "GammaLoss_0.1", "GammaLoss_0.25", "GammaLoss_0.5"
 class _ModelDict(dict):
@@ -214,8 +217,50 @@ def smact(model, target):
     return predictions
 
 
+def allMP_current(model, target):
+    """
+    Same 5-fold CV as allMP, but trained/evaluated on the 2026 MP dataset
+    (hullout_current.json, downloaded via download_mp_current.py).
+    Saves predictions to ml_data/Ef/allMP_current/<model>/ml_input.json.
+    Run interference_score.py with --split allMP_current --hullout hullout_current.json.
+    """
+    input_file = join(repo_path, "hullout_current.json")
+
+    print("Reading 2026 MP data from {}".format(input_file))
+
+    with open(input_file, 'r') as f:
+        input_data = json.load(f)
+
+    print("Preprocessing data")
+    features, targets, labels = model.preprocess(input_data)
+
+    predictions = dict()
+
+    kf = KFold(n_splits=5, shuffle=True, random_state=10)
+
+    iFold = 0
+    for train_indices, test_indices in kf.split(features):
+        print("Training on fold {}".format(iFold))
+        iFold += 1
+
+        features_train = features[train_indices]
+        targets_train  = targets[train_indices]
+        features_test  = features[test_indices]
+        labels_test    = labels[test_indices]
+
+        predictions_this_fold = model.fit_and_predict(
+            Xtrain=features_train, Ytrain=targets_train, Xtest=features_test)
+
+        predictions = {**predictions,
+                       **{labels_test[i]: predictions_this_fold[i]
+                          for i in range(len(test_indices))}}
+
+    return predictions
+
+
 # Dictionary of available problem functions
-problem_dictionary = {"allMP": allMP,
-                      "allMP_single": allMP_single,
-                      "LiMnTMO": LiMnTMO,
-                      "smact": smact}
+problem_dictionary = {"allMP":         allMP,
+                      "allMP_single":  allMP_single,
+                      "allMP_current": allMP_current,
+                      "LiMnTMO":       LiMnTMO,
+                      "smact":         smact}
