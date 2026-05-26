@@ -1,93 +1,143 @@
 """
-EdLossNN — ElementFraction MLP trained with Ef MSE + α · Ed MSE.
+EdLossNN — ElementFraction MLP trained with a normalised MSE + Ed² loss.
 
 Loss:
-    L = mean_i(δ_i²)  +  α · mean_r( (Σ_k ν_k δ_k)² )
+    L = (1 − α) · MSE_Ef / MSE_ref  +  α · Ed² / Ed²_ref
 
 where
-    δ_i              = Ef_pred_i − Ef_DFT_i      (per-compound error)
-    Σ_k ν_k δ_k      = Ed_pred_r − Ed_DFT_r      (per-reaction Ed error)
+    MSE_Ef  = mean_i( δ_i² )
+    Ed²     = mean_r( (Σ_k ω_k δ_k)² )   = mean_r( ΔA_obs² )
 
-Unlike iiLossNN's ξ² term, the Ed MSE term is NOT scale-normalised —
-it directly penalises large reaction prediction errors in eV²/atom².
-The Ef term is kept at full weight (no (1-α) factor) so Ef accuracy is
-never actively suppressed; α only adds an additional Ed signal.
+Both terms are normalised by periodically-refreshed reference values so
+that the α-weighting stays honest throughout training.
+
+Relationship to iiLossNN
+------------------------
+The ONLY difference between this model and iiLossNN is the reaction term:
+
+    iiLossNN :  ξ²   = (Σ ω_k δ_k)² / Σ (ω_k δ_k)²   [scale-invariant,  geometric]
+    EdLossNN :  Ed²  = (Σ ω_k δ_k)²                    [scale-dependent,  absolute]
+
+Everything else — architecture, optimiser, warmup schedule, renormalisation,
+gradient clipping, hyperparameter names — is identical, so any difference in
+downstream performance is attributable solely to the choice of reaction term.
 
 Usage:
-    python train_models.py allMP_single Ef EdLoss_1
-    python train_models.py allMP_single Ef EdLoss_5
-    python train_models.py allMP_single Ef EdLoss_10
-    python train_models.py allMP_single Ef EdLoss_25
-
-    # After finding best alpha, run 5-fold:
-    python train_models.py allMP Ef EdLoss_<best>
+    python train_models.py allMP Ef EdLoss_0.1
+    python train_models.py allMP Ef EdLoss_0.3
+    python train_models.py allMP Ef EdLoss_0.5
 """
 
 import numpy as np
 import torch
+import torch.nn as nn
 
-from mlstabilitytest.training.iiLossNN import iiLossNN, _ResidualMLP as _MLP, _parse_rxn, MAX_RXN_SIZE
+from mlstabilitytest.training.iiLossNN import (
+    iiLossNN, _parse_rxn, MAX_RXN_SIZE
+)
 
 
 class EdLossNN(iiLossNN):
     """
-    ElementFraction MLP with direct Ed-MSE regularisation.
+    ElementFraction MLP with normalised Ed²-regularised loss.
 
     Parameters
     ----------
     target : str
         Regression target key ('Ef' or 'Ed').
     alpha : float
-        Weight on the Ed MSE term.  α=0 → pure Ef MSE (baseline).
-        Suggested sweep: 1, 5, 10, 25.
+        Weight of Ed² loss term (0 = pure MSE, 1 = pure Ed²).
+        Same range and meaning as `lam` in iiLossNN.
+    eps : float
+        Stabiliser added to Ed²_ref denominator (eV²/atom²).
     hidden : tuple of int
+        Hidden layer widths. Must match iiLossNN for fair comparison.
+        Default: (1024, 512, 256, 128).
+    dropout : float
+        Dropout probability. Default: 0.0.
     lr : float
+        Adam initial learning rate.
     epochs : int
+        Total training epochs (full-batch).
+    warmup_frac : float
+        Fraction of epochs to train with α=0 (pure MSE warmup).
+    renorm_every : int
+        Recompute MSE_ref and Ed²_ref every N epochs.
+    grad_clip : float
+        Max gradient norm (0 = no clipping).
     device : str or None
+        'cuda', 'cpu', or None (auto-detect).
     """
 
     model_type = 'ed_nn'
 
     def __init__(
         self,
-        target='Ef',
-        alpha=5.0,
-        hidden=(1024, 512, 256),
-        lr=1e-3,
-        epochs=300,
-        device=None,
+        target        = 'Ef',
+        alpha         = 0.1,
+        eps           = 1e-4,
+        hidden        = (1024, 512, 256, 128),
+        dropout       = 0.0,
+        lr            = 1e-3,
+        epochs        = 500,
+        warmup_frac   = 0.1,
+        renorm_every  = 50,
+        grad_clip     = 1.0,
+        device        = None,
     ):
-        # Initialise via iiLossNN with lam=0 (no ξ² term used here)
+        # Initialise via iiLossNN; lam is unused (overridden below)
         super().__init__(
-            target=target,
-            lam=0.0,
-            hidden=hidden,
-            lr=lr,
-            epochs=epochs,
-            device=device,
+            target       = target,
+            lam          = 0.0,
+            eps          = eps,
+            hidden       = hidden,
+            dropout      = dropout,
+            lr           = lr,
+            epochs       = epochs,
+            warmup_frac  = warmup_frac,
+            renorm_every = renorm_every,
+            grad_clip    = grad_clip,
+            device       = device,
         )
         self.alpha = alpha
 
     # ------------------------------------------------------------------
-    # Override fit() to use the Ed-MSE loss instead of ξ²
+    # Reference computation (overrides iiLossNN: Ed² instead of ξ²)
+    # ------------------------------------------------------------------
+    def _compute_refs(self, X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev):
+        """
+        Compute MSE_ref and Ed²_ref from current model predictions.
+        Called at epoch 0 and every renorm_every epochs.
+        """
+        var_y = Y_t.var(unbiased=False).clamp(min=1e-6)
+        with torch.no_grad():
+            pred0   = self._net(X_t)
+            delta0  = pred0 - Y_t
+            mse_ref = (delta0 ** 2).mean().clamp(min=var_y)
+
+            if has_rxn:
+                c0      = R_coeff * delta0[R_idx] * R_mask   # (M, K)
+                ed_resid = c0.sum(dim=1)                      # (M,)  ΔA_obs
+                ed2_ref = (ed_resid ** 2).mean().clamp(min=1e-6)
+            else:
+                ed2_ref = torch.ones(1, device=dev).squeeze()
+
+        return mse_ref, ed2_ref
+
+    # ------------------------------------------------------------------
+    # Training loop (mirrors iiLossNN exactly; only reaction term differs)
     # ------------------------------------------------------------------
     def fit(self, X, Y):
-        """
-        Parameters
-        ----------
-        X : np.ndarray  (N_train, 119)  — col 0 = original row index
-        Y : np.ndarray  (N_train,)      — Ef target values
-        """
         dev = torch.device(self.device)
 
-        # ---- Recover indices and features --------------------------------
+        # -- Unpack index column -------------------------------------------
         train_indices = X[:, 0].astype(int)
         X_feat        = X[:, 1:].astype(np.float32)
 
         train_labels  = self._labels[train_indices]
         label_to_pos  = {lbl: i for i, lbl in enumerate(train_labels)}
 
-        # ---- Build padded reaction tensors (same as iiLossNN) --------------
+        # -- Build reaction tensors ----------------------------------------
         R_idx_list, R_coeff_list, R_mask_list = [], [], []
 
         for lbl in train_labels:
@@ -104,8 +154,8 @@ class EdLossNN(iiLossNN):
             mask_row  = [True] * len(pairs)
 
             pad = MAX_RXN_SIZE - len(pairs)
-            idx_row   += [0] * pad
-            coeff_row += [0.0] * pad
+            idx_row   += [0]     * pad
+            coeff_row += [0.0]   * pad
             mask_row  += [False] * pad
 
             R_idx_list.append(idx_row[:MAX_RXN_SIZE])
@@ -119,59 +169,87 @@ class EdLossNN(iiLossNN):
             has_rxn = True
         else:
             has_rxn = False
-            print("  [EdLossNN] Warning: no reactions found in training fold; "
-                  "falling back to pure Ef MSE.")
+            print("  [EdLossNN] Warning: no reactions in fold — pure MSE.")
 
-        # ---- Build network -----------------------------------------------
+        # -- Network, optimiser, scheduler ---------------------------------
+        from mlstabilitytest.training.iiLossNN import _ResidualMLP
         input_dim = X_feat.shape[1]
-        self._net = _MLP(input_dim, self.hidden).to(dev)
-        optimizer = torch.optim.Adam(self._net.parameters(), lr=self.lr)
+        self._net = _ResidualMLP(input_dim, self.hidden, self.dropout).to(dev)
+
+        optimizer = torch.optim.Adam(
+            self._net.parameters(), lr=self.lr, weight_decay=1e-4
+        )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=self.epochs, eta_min=self.lr * 0.01
         )
 
-        X_t      = torch.tensor(X_feat, dtype=torch.float32, device=dev)
-        Y_t      = torch.tensor(Y,      dtype=torch.float32, device=dev)
-        var_y    = Y_t.var(unbiased=False).clamp(min=1e-6)
-        with torch.no_grad():
-            mse_init = ((self._net(X_t) - Y_t) ** 2).mean().clamp(min=var_y)
+        X_t = torch.tensor(X_feat, dtype=torch.float32, device=dev)
+        Y_t = torch.tensor(Y,      dtype=torch.float32, device=dev)
 
-        # ---- Training loop -----------------------------------------------
+        # -- Warmup schedule (identical to iiLossNN) -----------------------
+        warmup_end = int(self.warmup_frac * self.epochs)
+        ramp_end   = int(2 * self.warmup_frac * self.epochs)
+
+        def effective_alpha(epoch: int) -> float:
+            if epoch < warmup_end:
+                return 0.0
+            if epoch < ramp_end:
+                return self.alpha * (epoch - warmup_end) / max(ramp_end - warmup_end, 1)
+            return self.alpha
+
+        # -- Initial reference values --------------------------------------
+        mse_ref, ed2_ref = self._compute_refs(
+            X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
+        )
+
+        # -- Training loop (full-batch) ------------------------------------
         self._net.train()
         for epoch in range(self.epochs):
+
+            # Refresh normalisation references periodically
+            if (self.renorm_every > 0
+                    and epoch > 0
+                    and epoch % self.renorm_every == 0):
+                mse_ref, ed2_ref = self._compute_refs(
+                    X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
+                )
+
+            alpha_eff = effective_alpha(epoch)
+
             optimizer.zero_grad()
 
-            pred  = self._net(X_t)       # (N_train,)
-            delta = pred - Y_t           # per-compound Ef errors
+            pred  = self._net(X_t)
+            delta = pred - Y_t
 
-            # -- Normalised Ef MSE: MSE / MSE_init ∈ [0, 1], full weight always
-            mse_loss = (delta ** 2).mean() / mse_init
+            mse_loss = (delta ** 2).mean() / mse_ref
 
-            # -- Ed MSE: mean_r( (Σ_k ν_k δ_k)² )  [eV²/atom², not normalised]
-            #    Keeping Ed term in absolute units is intentional — α then has
-            #    units of 1/eV² and can be interpreted as "how many eV² of
-            #    reaction error you tolerate per unit of (1-R²)".
-            if has_rxn:
-                with torch.no_grad() if self.alpha == 0 else torch.enable_grad():
-                    c        = R_coeff * delta[R_idx]   # (M, K)
-                    c        = c * R_mask               # zero padding
-                    ed_resid = c.sum(dim=1)             # (M,)  = Ed_DFT - Ed_pred
-                    ed_loss  = (ed_resid ** 2).mean()   # scalar, eV²/atom²
+            if has_rxn and alpha_eff > 0:
+                c        = R_coeff * delta[R_idx] * R_mask   # (M, K)
+                ed_resid = c.sum(dim=1)                       # (M,)  ΔA_obs
+                ed_loss  = (ed_resid ** 2).mean() / ed2_ref
             else:
                 ed_loss = torch.zeros(1, device=dev).squeeze()
 
-            loss = mse_loss + self.alpha * ed_loss
+            loss = (1.0 - alpha_eff) * mse_loss + alpha_eff * ed_loss
             loss.backward()
+
+            if self.grad_clip > 0:
+                nn.utils.clip_grad_norm_(self._net.parameters(), self.grad_clip)
+
             optimizer.step()
             scheduler.step()
 
             if epoch % 50 == 0 or epoch == self.epochs - 1:
-                print(
-                    f'  [EdLossNN α={self.alpha}] epoch {epoch:>4d} | '
-                    f'loss={loss.item():.5f}  '
-                    f'(1-R²)={mse_loss.item():.5f}  '
-                    f'Ed_mse={ed_loss.item():.5f}'
-                )
+                phase = ('warmup' if epoch < warmup_end
+                         else 'ramp' if epoch < ramp_end
+                         else 'train')
+                msg = (f'  [EdLossNN] ep {epoch:>4d} [{phase}] '
+                       f'loss={loss.item():.5f}  '
+                       f'MSE/ref={mse_loss.item():.5f}  '
+                       f'alpha_eff={alpha_eff:.3f}')
+                if alpha_eff > 0 and has_rxn:
+                    msg += f'  Ed²/ref={ed_loss.item():.5f}'
+                print(msg)
 
         self._net.eval()
         return self
