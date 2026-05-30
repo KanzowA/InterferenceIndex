@@ -401,6 +401,7 @@ def download_pymatgen(api_key, ef_cutoff=1.0, limit=None):
                     "Ed": Ed,
                     "rxn": rxn,
                     "stability": stable,
+                    "material_id": gs.material_id,
                 }
 
     n_stable = sum(1 for v in hullout.values() if v["stability"])

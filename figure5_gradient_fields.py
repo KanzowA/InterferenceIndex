@@ -36,8 +36,8 @@ R1f, R2f = np.meshgrid(xf, yf)
 Qf  = R1f**2 + R2f**2
 xi_bg = np.where(Qf > 1e-8, np.abs(R1f + R2f) / np.sqrt(Qf), 0.0)
 
-# ── Stream grid ───────────────────────────────────────────────────────────────
-NS = 28
+# ── Arrow grid (quiver) ───────────────────────────────────────────────────────
+NS = 10
 xs = np.linspace(-EXTENT, EXTENT, NS)
 ys = np.linspace(-EXTENT, EXTENT, NS)
 R1s, R2s = np.meshgrid(xs, ys)
@@ -86,28 +86,22 @@ for ax, U, V, panel_lbl, title_str, eq_str in panels:
     ax.pcolormesh(xf, yf, xi_bg, cmap=CMAP, norm=norm,
                   rasterized=True, zorder=0)
 
-    # ── Streamplot (unit-normalised direction) ────────────────────────────────
+    # ── Quiver (unit-normalised direction, regular grid) ─────────────────────
     Un, Vn = _unit(U, V)
-    ax.streamplot(xs, ys, Un, Vn,
-                  color='black', linewidth=0.6,
-                  density=2.2, arrowsize=0.7, zorder=3)
+    ax.quiver(xs, ys, Un, Vn,
+              color='black', alpha=0.75,
+              scale=14, width=0.01,
+              headwidth=5, headlength=5, headaxislength=3,
+              zorder=3)
 
     # ── Reference lines ───────────────────────────────────────────────────────
-    # Aggregation direction 1 = (1,1)/√2  (ξ maximum)
-    ax.plot([-ext/SQ2, ext/SQ2], [-ext/SQ2, ext/SQ2],
-            '--', color='k', lw=1.3, alpha=0.55, zorder=2)
-    ax.text(ext/SQ2 + 0.04, ext/SQ2 - 0.12, r'$\mathbf{1}$',
-            fontsize=10, color='k', alpha=0.7)
 
-    # ξ = 0 line  (1,-1)/√2
-    ax.plot([-ext/SQ2, ext/SQ2], [ext/SQ2, -ext/SQ2],
-            ':', color='k', lw=1.3, alpha=0.45, zorder=2)
-    ax.text(ext/SQ2 + 0.04, -ext/SQ2 + 0.10, r'$\xi\!=\!0$',
-            fontsize=9, color='k', alpha=0.6)
+    ax.axvline(0.00, ymin=0.00, ymax=1.00, color = 'k', alpha = 0.3)
+    ax.axhline(0.00, xmin=0.00, xmax=1.00, color = 'k', alpha = 0.3)
 
     # ξ = 1 circle
-    ax.plot(np.cos(theta_c), np.sin(theta_c),
-            '--', color='k', lw=0.7, alpha=0.3, zorder=2)
+    #ax.plot(np.cos(theta_c), np.sin(theta_c),
+    #        '--', color='k', lw=0.7, alpha=0.3, zorder=2)
 
     # origin dot
     ax.plot(0, 0, 'ko', ms=3.5, zorder=5)
@@ -143,4 +137,4 @@ cbar.set_ticks([0, 1, SQ2])
 cbar.set_ticklabels(['0', '1', r'$\sqrt{2}$'])
 
 plt.savefig('figure5_gradient_fields.png', dpi=150, bbox_inches='tight')
-print('Saved → figure5_gradient_fields.png')
+print('Saved figure5_gradient_fields.png')

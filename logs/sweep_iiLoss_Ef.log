@@ -1,0 +1,42 @@
+=====================================================
+  iiLoss sweep — target: Ef
+  λ values: 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+  Started: Tue May 26 16:49:53 CEST 2026
+=====================================================
+
+-----------------------------------------------------
+  [1/11]  λ = 0.0  →  iiLoss_0.0
+  Tue May 26 16:49:53 CEST 2026
+-----------------------------------------------------
+sweep_iiLoss.sh: line 32: python: command not found
+  [ERROR] Run iiLoss_0.0 exited with status 127 — stopping.
+=====================================================
+  iiLoss sweep — target: Ef
+  λ values: 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+  Started: Tue May 26 16:54:23 CEST 2026
+=====================================================
+
+-----------------------------------------------------
+  [1/11]  λ = 0.0  →  iiLoss_0.0
+  Tue May 26 16:54:23 CEST 2026
+-----------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/akanz/ML_NN_project/TestStabilityMl/mlstabilitytest/train_models.py", line 5, in <module>
+    from mlstabilitytest.training.process import problem_dictionary, target_list, model_dictionary
+ModuleNotFoundError: No module named 'mlstabilitytest'
+  [ERROR] Run iiLoss_0.0 exited with status 1 — stopping.
+=====================================================
+  iiLoss sweep — target: Ef
+  λ values: 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+  Started: Tue May 26 16:55:49 CEST 2026
+=====================================================
+
+-----------------------------------------------------
+  [1/11]  λ = 0.0  →  iiLoss_0.0
+  Tue May 26 16:55:49 CEST 2026
+-----------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/c/Users/akanz/ML_NN_project/TestStabilityMl/mlstabilitytest/train_models.py", line 5, in <module>
+    from mlstabilitytest.training.process import problem_dictionary, target_list, model_dictionary
+ModuleNotFoundError: No module named 'mlstabilitytest'
+  [ERROR] Run iiLoss_0.0 exited with status 1 — stopping.

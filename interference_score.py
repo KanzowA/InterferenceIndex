@@ -74,6 +74,10 @@ def parse_rxn(rxn_str):
     products = []
     for token in rxn_str.split(" + "):
         token = token.strip()
+        if "_" not in token:
+            # bare formula with no coefficient — treat as weight 1.0
+            products.append((1.0, token))
+            continue
         amt_str, formula = token.split("_", 1)
         products.append((float(amt_str), formula))
     return products
@@ -208,14 +212,14 @@ def plot_interference_circles(results, models):
             hist_max = max(hist_max, float(counts.max()))
     HIST_SCALE = HIST_H / hist_max if hist_max > 0 else 1.0
 
-    norm     = TwoSlopeNorm(vmin=0, vcenter=1.0, vmax=math.sqrt(max(all_N)))
+    norm     = TwoSlopeNorm(vmin=0, vcenter=1.0, vmax=math.sqrt(10))
     cmap_obj = plt.get_cmap(_CMAP)
     arc_theta = np.linspace(0, np.pi / 2, 300)
 
     tick_vals = [t for t in [0, 1, 2, 3] if t <= lim]
 
     fig, axes = plt.subplots(n_rows, n_cols,
-                             figsize=(5.5 * n_cols, 5.5 * n_rows),
+                             figsize=(5.5 * n_cols + 0.8, 5.5 * n_rows),
                              squeeze=False)
 
     for idx, model_name in enumerate(models_filtered):
@@ -313,6 +317,17 @@ def plot_interference_circles(results, models):
         
         
     plt.tight_layout(w_pad=4.0)
+    fig.subplots_adjust(right=0.88)
+
+    # Shared colorbar on the right
+    cbar_ax = fig.add_axes([0.91, 0.15, 0.018, 0.70])
+    sm = plt.cm.ScalarMappable(cmap=_CMAP, norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, cax=cbar_ax)
+    cbar.set_label(r'$\xi$', fontsize=13)
+    cbar.set_ticks([0, 1, math.sqrt(10)])
+    cbar.set_ticklabels(['0', '1', r'$\sqrt{10}$'])
+
     plt.savefig("interference_circles.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     print("Figure saved to interference_circles.png")
@@ -413,11 +428,11 @@ def main():
             for name in os.listdir(ml_dir):
                 if name.startswith(prefix) and os.path.isdir(os.path.join(ml_dir, name)):
                     try:
-                        float(name.split("_", 1)[1])
+                        float(name.rsplit("_", 1)[1])  # handles iiLoss_finetune_0.1 etc.
                         variants.append(name)
                     except ValueError:
                         pass
-        variants.sort(key=lambda n: float(n.split("_", 1)[1]))
+        variants.sort(key=lambda n: (n.rsplit("_", 1)[0], float(n.rsplit("_", 1)[1])))
         return variants
 
     ii_variants = _detect_variants("iiLoss_", ML_DIR)

@@ -27,6 +27,7 @@ Metrics:
     python interference_score.py
 """
 
+import os
 import re
 import numpy as np
 import torch
@@ -158,34 +159,46 @@ class iiLossNN(MLModel):
 
     def __init__(
         self,
-        target       = 'Ef',
-        lam          = 0.1,
-        eps          = 1e-4,
-        hidden       = (1024, 512, 256, 128),
-        dropout      = 0.0,
-        lr           = 1e-3,
-        epochs       = 500,
-        warmup_frac  = 0.1,
-        renorm_every = 50,
-        grad_clip    = 1.0,
-        device       = None,
+        target          = 'Ef',
+        lam             = 0.1,
+        eps             = 1e-4,
+        hidden          = (1024, 512, 256, 128),
+        dropout         = 0.0,
+        lr              = 1e-3,
+        epochs          = 500,
+        warmup_frac     = 0.1,
+        renorm_every    = 50,
+        grad_clip       = 1.0,
+        device          = None,
+        # ── Two-stage fine-tuning ──────────────────────────────────────────
+        checkpoint_dir  = None,   # save per-fold weights here after training
+        finetune_from   = None,   # load per-fold weights from here (stage 2)
+        finetune_lr     = 1e-4,   # LR for fine-tuning (lower than stage-1)
+        finetune_epochs = 200,    # epochs for fine-tuning
+        use_pcgrad      = False,  # gradient surgery: project ξ² ⊥ MSE each step
     ):
-        self.target       = target
-        self.lam          = lam
-        self.eps          = eps
-        self.hidden       = tuple(hidden)
-        self.dropout      = dropout
-        self.lr           = lr
-        self.epochs       = epochs
-        self.warmup_frac  = warmup_frac
-        self.renorm_every = renorm_every
-        self.grad_clip    = grad_clip
-        self.device       = (device if device
-                             else ('cuda' if torch.cuda.is_available() else 'cpu'))
+        self.target          = target
+        self.lam             = lam
+        self.eps             = eps
+        self.hidden          = tuple(hidden)
+        self.dropout         = dropout
+        self.lr              = lr
+        self.epochs          = epochs
+        self.warmup_frac     = warmup_frac
+        self.renorm_every    = renorm_every
+        self.grad_clip       = grad_clip
+        self.device          = (device if device
+                                else ('cuda' if torch.cuda.is_available() else 'cpu'))
+        self.checkpoint_dir  = checkpoint_dir
+        self.finetune_from   = finetune_from
+        self.finetune_lr     = finetune_lr
+        self.finetune_epochs = finetune_epochs
+        self.use_pcgrad      = use_pcgrad
 
-        self._labels = None
-        self._data   = None
-        self._net    = None
+        self._labels      = None
+        self._data        = None
+        self._net         = None
+        self._fold_counter = 0   # incremented each fit() call to track fold index
 
     # ------------------------------------------------------------------
     # MLModel interface
@@ -222,6 +235,10 @@ class iiLossNN(MLModel):
 
     def fit(self, X, Y):
         dev = torch.device(self.device)
+
+        # -- Track fold index ----------------------------------------------
+        fold_idx = self._fold_counter
+        self._fold_counter += 1
 
         # -- Unpack index column -------------------------------------------
         train_indices = X[:, 0].astype(int)
@@ -264,15 +281,34 @@ class iiLossNN(MLModel):
             has_rxn = False
             print("  [iiLossNN] Warning: no reactions in fold — pure MSE.")
 
-        # -- Network, optimiser, scheduler ---------------------------------
+        # -- Network -------------------------------------------------------
         input_dim = X_feat.shape[1]
         self._net = _ResidualMLP(input_dim, self.hidden, self.dropout).to(dev)
 
+        # -- Two-stage: load pretrained weights if fine-tuning -------------
+        is_finetune = self.finetune_from is not None
+        if is_finetune:
+            ckpt_path = os.path.join(self.finetune_from,
+                                     f"{self.target}_fold{fold_idx}.pt")
+            state = torch.load(ckpt_path, map_location=dev)
+            self._net.load_state_dict(state)
+            print(f"  [iiLossNN] Loaded pretrained weights: {ckpt_path}")
+            actual_lr      = self.finetune_lr
+            actual_epochs  = self.finetune_epochs
+            actual_warmup  = 0.0   # start from good model — no warmup
+            actual_renorm  = 0     # keep refs fixed at converged values
+        else:
+            actual_lr      = self.lr
+            actual_epochs  = self.epochs
+            actual_warmup  = self.warmup_frac
+            actual_renorm  = self.renorm_every
+
+        # -- Optimiser and scheduler ---------------------------------------
         optimizer = torch.optim.Adam(
-            self._net.parameters(), lr=self.lr, weight_decay=1e-4
+            self._net.parameters(), lr=actual_lr, weight_decay=1e-4
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=self.epochs, eta_min=self.lr * 0.01
+            optimizer, T_max=actual_epochs, eta_min=actual_lr * 0.01
         )
 
         X_t = torch.tensor(X_feat, dtype=torch.float32, device=dev)
@@ -282,8 +318,9 @@ class iiLossNN(MLModel):
         # Phase 1: first warmup_frac of epochs → λ_eff = 0 (pure MSE)
         # Phase 2: next warmup_frac of epochs  → λ_eff ramps 0 → λ
         # Phase 3: remainder                   → λ_eff = λ
-        warmup_end  = int(self.warmup_frac * self.epochs)
-        ramp_end    = int(2 * self.warmup_frac * self.epochs)
+        # (Fine-tuning: actual_warmup=0, so λ_eff = λ from epoch 0)
+        warmup_end  = int(actual_warmup * actual_epochs)
+        ramp_end    = int(2 * actual_warmup * actual_epochs)
 
         def effective_lam(epoch: int) -> float:
             if epoch < warmup_end:
@@ -292,42 +329,81 @@ class iiLossNN(MLModel):
                 return self.lam * (epoch - warmup_end) / max(ramp_end - warmup_end, 1)
             return self.lam
 
-        # -- Initial reference values --------------------------------------
+        # -- Reference values (set from current model state) ---------------
+        # For fine-tuning: model is pretrained, so refs are calibrated to
+        # the converged solution — both terms start at 1.0 and stay balanced.
         mse_ref, xi2_ref = self._compute_refs(
             X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
         )
 
         # -- Training loop (full-batch) ------------------------------------
         self._net.train()
-        for epoch in range(self.epochs):
+        for epoch in range(actual_epochs):
 
-            # Refresh normalisation references periodically
-            if (self.renorm_every > 0
+            # Refresh normalisation references periodically (disabled for fine-tuning)
+            if (actual_renorm > 0
                     and epoch > 0
-                    and epoch % self.renorm_every == 0):
+                    and epoch % actual_renorm == 0):
                 mse_ref, xi2_ref = self._compute_refs(
                     X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
                 )
 
             lam_eff = effective_lam(epoch)
 
-            optimizer.zero_grad()
+            if self.use_pcgrad and has_rxn and lam_eff > 0:
+                # ── PCGrad: two separate backward passes, then project ─────
+                # Pass 1: MSE gradient
+                optimizer.zero_grad()
+                pred      = self._net(X_t)
+                delta     = pred - Y_t
+                mse_loss  = (delta ** 2).mean() / mse_ref
+                mse_loss.backward()
+                g_mse = [p.grad.detach().clone() if p.grad is not None
+                         else torch.zeros_like(p)
+                         for p in self._net.parameters()]
 
-            pred  = self._net(X_t)
-            delta = pred - Y_t
+                # Pass 2: ξ² gradient
+                optimizer.zero_grad()
+                pred      = self._net(X_t)
+                delta     = pred - Y_t
+                c         = R_coeff * delta[R_idx] * R_mask
+                num       = c.sum(dim=1) ** 2
+                den       = (c ** 2).sum(dim=1) + self.eps
+                xi_loss   = (num / den).mean() / xi2_ref
+                xi_loss.backward()
+                g_xi = [p.grad.detach().clone() if p.grad is not None
+                        else torch.zeros_like(p)
+                        for p in self._net.parameters()]
 
-            mse_loss = (delta ** 2).mean() / mse_ref
+                # Project g_xi orthogonal to g_mse (per-step, exact at current θ)
+                dot   = sum((a * b).sum() for a, b in zip(g_xi, g_mse))
+                norm2 = sum((b * b).sum() for b in g_mse).clamp(min=1e-12)
+                g_xi_proj = [a - (dot / norm2) * b for a, b in zip(g_xi, g_mse)]
 
-            if has_rxn and lam_eff > 0:
-                c       = R_coeff * delta[R_idx] * R_mask
-                num     = c.sum(dim=1) ** 2
-                den     = (c ** 2).sum(dim=1) + self.eps
-                xi_loss = (num / den).mean() / xi2_ref
+                # Combine and set gradients
+                optimizer.zero_grad()
+                for p, gm, gp in zip(self._net.parameters(), g_mse, g_xi_proj):
+                    p.grad = (1.0 - lam_eff) * gm + lam_eff * gp
+
+                loss = (1.0 - lam_eff) * mse_loss + lam_eff * xi_loss  # for logging
+
             else:
-                xi_loss = torch.zeros(1, device=dev).squeeze()
+                # ── Standard combined backward pass ───────────────────────
+                optimizer.zero_grad()
+                pred      = self._net(X_t)
+                delta     = pred - Y_t
+                mse_loss  = (delta ** 2).mean() / mse_ref
 
-            loss = (1.0 - lam_eff) * mse_loss + lam_eff * xi_loss
-            loss.backward()
+                if has_rxn and lam_eff > 0:
+                    c       = R_coeff * delta[R_idx] * R_mask
+                    num     = c.sum(dim=1) ** 2
+                    den     = (c ** 2).sum(dim=1) + self.eps
+                    xi_loss = (num / den).mean() / xi2_ref
+                else:
+                    xi_loss = torch.zeros(1, device=dev).squeeze()
+
+                loss = (1.0 - lam_eff) * mse_loss + lam_eff * xi_loss
+                loss.backward()
 
             if self.grad_clip > 0:
                 nn.utils.clip_grad_norm_(self._net.parameters(), self.grad_clip)
@@ -335,9 +411,10 @@ class iiLossNN(MLModel):
             optimizer.step()
             scheduler.step()
 
-            if epoch % 50 == 0 or epoch == self.epochs - 1:
+            if epoch % 50 == 0 or epoch == actual_epochs - 1:
                 phase = ('warmup' if epoch < warmup_end
                          else 'ramp' if epoch < ramp_end
+                         else 'finetune' if is_finetune
                          else 'train')
                 msg = (f'  [iiLossNN] ep {epoch:>4d} [{phase}] '
                        f'loss={loss.item():.5f}  '
@@ -348,6 +425,15 @@ class iiLossNN(MLModel):
                 print(msg)
 
         self._net.eval()
+
+        # -- Save checkpoint (stage 1) -------------------------------------
+        if self.checkpoint_dir is not None:
+            os.makedirs(self.checkpoint_dir, exist_ok=True)
+            ckpt_path = os.path.join(self.checkpoint_dir,
+                                     f"{self.target}_fold{fold_idx}.pt")
+            torch.save(self._net.state_dict(), ckpt_path)
+            print(f"  [iiLossNN] Saved checkpoint: {ckpt_path}")
+
         return self
 
     def predict(self, X):

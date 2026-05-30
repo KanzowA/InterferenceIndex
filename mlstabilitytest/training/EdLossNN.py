@@ -19,15 +19,23 @@ The ONLY difference between this model and iiLossNN is the reaction term:
     EdLossNN :  Ed²  = (Σ ω_k δ_k)²                    [scale-dependent,  absolute]
 
 Everything else — architecture, optimiser, warmup schedule, renormalisation,
-gradient clipping, hyperparameter names — is identical, so any difference in
-downstream performance is attributable solely to the choice of reaction term.
+gradient clipping, two-stage fine-tuning, PCGrad — is identical, so any
+difference in downstream performance is attributable solely to the choice
+of reaction term.
 
-Usage:
-    python train_models.py allMP Ef EdLoss_0.1
-    python train_models.py allMP Ef EdLoss_0.3
-    python train_models.py allMP Ef EdLoss_0.5
+Usage (single-stage):
+    python train_models.py allMP_current Ef EdLoss_0.1
+
+Usage (two-stage, same as iiLoss finetune):
+    # Stage 1: reuse iiLoss_save_0.0 checkpoints (pure MSE — identical)
+    # Stage 2:
+    python train_models.py allMP_current_finetune Ef EdLoss_finetune_0.1
+
+Usage (two-stage + PCGrad):
+    python train_models.py allMP_current_finetune Ef EdLoss_pcgrad_0.1
 """
 
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -47,12 +55,10 @@ class EdLossNN(iiLossNN):
         Regression target key ('Ef' or 'Ed').
     alpha : float
         Weight of Ed² loss term (0 = pure MSE, 1 = pure Ed²).
-        Same range and meaning as `lam` in iiLossNN.
     eps : float
         Stabiliser added to Ed²_ref denominator (eV²/atom²).
     hidden : tuple of int
-        Hidden layer widths. Must match iiLossNN for fair comparison.
-        Default: (1024, 512, 256, 128).
+        Hidden layer widths. Default: (1024, 512, 256, 128).
     dropout : float
         Dropout probability. Default: 0.0.
     lr : float
@@ -62,53 +68,72 @@ class EdLossNN(iiLossNN):
     warmup_frac : float
         Fraction of epochs to train with α=0 (pure MSE warmup).
     renorm_every : int
-        Recompute MSE_ref and Ed²_ref every N epochs.
+        Recompute MSE_ref and Ed²_ref every N epochs (0 = never after init).
     grad_clip : float
         Max gradient norm (0 = no clipping).
     device : str or None
         'cuda', 'cpu', or None (auto-detect).
+
+    Two-stage fine-tuning parameters (mirror iiLossNN):
+    checkpoint_dir : str or None
+        Save per-fold weights here after stage-1 training.
+    finetune_from : str or None
+        Load per-fold weights from here at the start of stage-2.
+    finetune_lr : float
+        Learning rate for fine-tuning stage.
+    finetune_epochs : int
+        Number of epochs for fine-tuning stage.
+    use_pcgrad : bool
+        If True, project Ed² gradient orthogonal to MSE gradient each step.
     """
 
     model_type = 'ed_nn'
 
     def __init__(
         self,
-        target        = 'Ef',
-        alpha         = 0.1,
-        eps           = 1e-4,
-        hidden        = (1024, 512, 256, 128),
-        dropout       = 0.0,
-        lr            = 1e-3,
-        epochs        = 500,
-        warmup_frac   = 0.1,
-        renorm_every  = 50,
-        grad_clip     = 1.0,
-        device        = None,
+        target          = 'Ef',
+        alpha           = 0.1,
+        eps             = 1e-4,
+        hidden          = (1024, 512, 256, 128),
+        dropout         = 0.0,
+        lr              = 1e-3,
+        epochs          = 500,
+        warmup_frac     = 0.1,
+        renorm_every    = 50,
+        grad_clip       = 1.0,
+        device          = None,
+        # ── two-stage fine-tuning ──────────────────────────────────────────
+        checkpoint_dir  = None,
+        finetune_from   = None,
+        finetune_lr     = 1e-4,
+        finetune_epochs = 200,
+        use_pcgrad      = False,
     ):
-        # Initialise via iiLossNN; lam is unused (overridden below)
+        # Initialise via iiLossNN with lam=0; finetune params stored on self
         super().__init__(
-            target       = target,
-            lam          = 0.0,
-            eps          = eps,
-            hidden       = hidden,
-            dropout      = dropout,
-            lr           = lr,
-            epochs       = epochs,
-            warmup_frac  = warmup_frac,
-            renorm_every = renorm_every,
-            grad_clip    = grad_clip,
-            device       = device,
+            target          = target,
+            lam             = 0.0,
+            eps             = eps,
+            hidden          = hidden,
+            dropout         = dropout,
+            lr              = lr,
+            epochs          = epochs,
+            warmup_frac     = warmup_frac,
+            renorm_every    = renorm_every,
+            grad_clip       = grad_clip,
+            device          = device,
+            checkpoint_dir  = checkpoint_dir,
+            finetune_from   = finetune_from,
+            finetune_lr     = finetune_lr,
+            finetune_epochs = finetune_epochs,
+            use_pcgrad      = use_pcgrad,
         )
         self.alpha = alpha
 
-    # ------------------------------------------------------------------
-    # Reference computation (overrides iiLossNN: Ed² instead of ξ²)
-    # ------------------------------------------------------------------
+    # ── reference computation ─────────────────────────────────────────────────
+
     def _compute_refs(self, X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev):
-        """
-        Compute MSE_ref and Ed²_ref from current model predictions.
-        Called at epoch 0 and every renorm_every epochs.
-        """
+        """Compute MSE_ref and Ed²_ref from current model predictions."""
         var_y = Y_t.var(unbiased=False).clamp(min=1e-6)
         with torch.no_grad():
             pred0   = self._net(X_t)
@@ -116,28 +141,31 @@ class EdLossNN(iiLossNN):
             mse_ref = (delta0 ** 2).mean().clamp(min=var_y)
 
             if has_rxn:
-                c0      = R_coeff * delta0[R_idx] * R_mask   # (M, K)
-                ed_resid = c0.sum(dim=1)                      # (M,)  ΔA_obs
-                ed2_ref = (ed_resid ** 2).mean().clamp(min=1e-6)
+                c0       = R_coeff * delta0[R_idx] * R_mask   # (M, K)
+                ed_resid = c0.sum(dim=1)                       # (M,)
+                ed2_ref  = (ed_resid ** 2).mean().clamp(min=1e-6)
             else:
                 ed2_ref = torch.ones(1, device=dev).squeeze()
 
         return mse_ref, ed2_ref
 
-    # ------------------------------------------------------------------
-    # Training loop (mirrors iiLossNN exactly; only reaction term differs)
-    # ------------------------------------------------------------------
+    # ── training loop ─────────────────────────────────────────────────────────
+
     def fit(self, X, Y):
         dev = torch.device(self.device)
 
-        # -- Unpack index column -------------------------------------------
+        # ── fold tracking (for checkpoint filenames) ──────────────────────────
+        fold_idx = self._fold_counter
+        self._fold_counter += 1
+
+        # ── unpack index column ───────────────────────────────────────────────
         train_indices = X[:, 0].astype(int)
         X_feat        = X[:, 1:].astype(np.float32)
 
         train_labels  = self._labels[train_indices]
         label_to_pos  = {lbl: i for i, lbl in enumerate(train_labels)}
 
-        # -- Build reaction tensors ----------------------------------------
+        # ── build reaction tensors ────────────────────────────────────────────
         R_idx_list, R_coeff_list, R_mask_list = [], [], []
 
         for lbl in train_labels:
@@ -171,24 +199,45 @@ class EdLossNN(iiLossNN):
             has_rxn = False
             print("  [EdLossNN] Warning: no reactions in fold — pure MSE.")
 
-        # -- Network, optimiser, scheduler ---------------------------------
+        # ── network ───────────────────────────────────────────────────────────
         from mlstabilitytest.training.iiLossNN import _ResidualMLP
         input_dim = X_feat.shape[1]
         self._net = _ResidualMLP(input_dim, self.hidden, self.dropout).to(dev)
 
+        # ── stage-2: load pretrained weights if fine-tuning ───────────────────
+        if self.finetune_from is not None:
+            ckpt_path = os.path.join(
+                self.finetune_from, f"{self.target}_fold{fold_idx}.pt")
+            if os.path.exists(ckpt_path):
+                state = torch.load(ckpt_path, map_location=dev)
+                self._net.load_state_dict(state)
+                print(f"  [EdLossNN] loaded checkpoint: {ckpt_path}")
+            else:
+                print(f"  [EdLossNN] WARNING: checkpoint not found: {ckpt_path}")
+            actual_lr      = self.finetune_lr
+            actual_epochs  = self.finetune_epochs
+            actual_warmup  = 0.0
+            actual_renorm  = 0
+        else:
+            actual_lr      = self.lr
+            actual_epochs  = self.epochs
+            actual_warmup  = self.warmup_frac
+            actual_renorm  = self.renorm_every
+
+        # ── optimiser & scheduler ─────────────────────────────────────────────
         optimizer = torch.optim.Adam(
-            self._net.parameters(), lr=self.lr, weight_decay=1e-4
+            self._net.parameters(), lr=actual_lr, weight_decay=1e-4
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=self.epochs, eta_min=self.lr * 0.01
+            optimizer, T_max=actual_epochs, eta_min=actual_lr * 0.01
         )
 
         X_t = torch.tensor(X_feat, dtype=torch.float32, device=dev)
         Y_t = torch.tensor(Y,      dtype=torch.float32, device=dev)
 
-        # -- Warmup schedule (identical to iiLossNN) -----------------------
-        warmup_end = int(self.warmup_frac * self.epochs)
-        ramp_end   = int(2 * self.warmup_frac * self.epochs)
+        # ── warmup schedule ───────────────────────────────────────────────────
+        warmup_end = int(actual_warmup * actual_epochs)
+        ramp_end   = int(2 * actual_warmup * actual_epochs)
 
         def effective_alpha(epoch: int) -> float:
             if epoch < warmup_end:
@@ -197,59 +246,121 @@ class EdLossNN(iiLossNN):
                 return self.alpha * (epoch - warmup_end) / max(ramp_end - warmup_end, 1)
             return self.alpha
 
-        # -- Initial reference values --------------------------------------
+        # ── initial reference values (calibrated at checkpoint, not random init)
         mse_ref, ed2_ref = self._compute_refs(
-            X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
+            X_t, Y_t, R_idx if has_rxn else None,
+            R_coeff if has_rxn else None,
+            R_mask  if has_rxn else None,
+            has_rxn, dev
         )
 
-        # -- Training loop (full-batch) ------------------------------------
+        # ── training loop (full-batch) ────────────────────────────────────────
         self._net.train()
-        for epoch in range(self.epochs):
+        for epoch in range(actual_epochs):
 
-            # Refresh normalisation references periodically
-            if (self.renorm_every > 0
+            # Refresh refs periodically
+            if (actual_renorm > 0
                     and epoch > 0
-                    and epoch % self.renorm_every == 0):
+                    and epoch % actual_renorm == 0):
                 mse_ref, ed2_ref = self._compute_refs(
-                    X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
+                    X_t, Y_t, R_idx if has_rxn else None,
+                    R_coeff if has_rxn else None,
+                    R_mask  if has_rxn else None,
+                    has_rxn, dev
                 )
 
             alpha_eff = effective_alpha(epoch)
 
-            optimizer.zero_grad()
+            # ── PCGrad path ───────────────────────────────────────────────────
+            if self.use_pcgrad and has_rxn and alpha_eff > 0:
 
-            pred  = self._net(X_t)
-            delta = pred - Y_t
+                # MSE gradient
+                optimizer.zero_grad()
+                pred  = self._net(X_t); delta = pred - Y_t
+                mse_loss = (delta ** 2).mean() / mse_ref
+                mse_loss.backward()
+                g_mse = [p.grad.detach().clone()
+                         if p.grad is not None else torch.zeros_like(p)
+                         for p in self._net.parameters()]
 
-            mse_loss = (delta ** 2).mean() / mse_ref
-
-            if has_rxn and alpha_eff > 0:
-                c        = R_coeff * delta[R_idx] * R_mask   # (M, K)
-                ed_resid = c.sum(dim=1)                       # (M,)  ΔA_obs
+                # Ed² gradient
+                optimizer.zero_grad()
+                pred  = self._net(X_t); delta = pred - Y_t
+                c        = R_coeff * delta[R_idx] * R_mask
+                ed_resid = c.sum(dim=1)
                 ed_loss  = (ed_resid ** 2).mean() / ed2_ref
+                ed_loss.backward()
+                g_ed = [p.grad.detach().clone()
+                        if p.grad is not None else torch.zeros_like(p)
+                        for p in self._net.parameters()]
+
+                # Project g_ed ⊥ g_mse
+                dot   = sum((a * b).sum() for a, b in zip(g_ed,  g_mse))
+                norm2 = sum((b * b).sum() for b in g_mse).clamp(min=1e-12)
+                g_ed_proj = [a - (dot / norm2) * b
+                             for a, b in zip(g_ed, g_mse)]
+
+                # Apply combined gradient
+                optimizer.zero_grad()
+                for p, gm, gp in zip(self._net.parameters(), g_mse, g_ed_proj):
+                    p.grad = (1.0 - alpha_eff) * gm + alpha_eff * gp
+
+                if self.grad_clip > 0:
+                    nn.utils.clip_grad_norm_(
+                        self._net.parameters(), self.grad_clip)
+                optimizer.step()
+
+                loss     = mse_loss  # for logging
+                ed_log   = ed_loss
+
+            # ── standard path ─────────────────────────────────────────────────
             else:
-                ed_loss = torch.zeros(1, device=dev).squeeze()
+                optimizer.zero_grad()
+                pred  = self._net(X_t)
+                delta = pred - Y_t
 
-            loss = (1.0 - alpha_eff) * mse_loss + alpha_eff * ed_loss
-            loss.backward()
+                mse_loss = (delta ** 2).mean() / mse_ref
 
-            if self.grad_clip > 0:
-                nn.utils.clip_grad_norm_(self._net.parameters(), self.grad_clip)
+                if has_rxn and alpha_eff > 0:
+                    c        = R_coeff * delta[R_idx] * R_mask
+                    ed_resid = c.sum(dim=1)
+                    ed_loss  = (ed_resid ** 2).mean() / ed2_ref
+                else:
+                    ed_loss = torch.zeros(1, device=dev).squeeze()
 
-            optimizer.step()
+                loss = (1.0 - alpha_eff) * mse_loss + alpha_eff * ed_loss
+                loss.backward()
+
+                if self.grad_clip > 0:
+                    nn.utils.clip_grad_norm_(
+                        self._net.parameters(), self.grad_clip)
+
+                optimizer.step()
+                ed_log = ed_loss
+
             scheduler.step()
 
-            if epoch % 50 == 0 or epoch == self.epochs - 1:
+            if epoch % 50 == 0 or epoch == actual_epochs - 1:
                 phase = ('warmup' if epoch < warmup_end
                          else 'ramp' if epoch < ramp_end
                          else 'train')
-                msg = (f'  [EdLossNN] ep {epoch:>4d} [{phase}] '
-                       f'loss={loss.item():.5f}  '
-                       f'MSE/ref={mse_loss.item():.5f}  '
-                       f'alpha_eff={alpha_eff:.3f}')
+                mode  = 'pcgrad' if self.use_pcgrad else 'std'
+                msg   = (f'  [EdLossNN/{mode}] ep {epoch:>4d} [{phase}] '
+                         f'loss={loss.item():.5f}  '
+                         f'MSE/ref={mse_loss.item():.5f}  '
+                         f'alpha_eff={alpha_eff:.3f}')
                 if alpha_eff > 0 and has_rxn:
-                    msg += f'  Ed²/ref={ed_loss.item():.5f}'
+                    msg += f'  Ed²/ref={ed_log.item():.5f}'
                 print(msg)
 
         self._net.eval()
+
+        # ── stage-1: save checkpoint ──────────────────────────────────────────
+        if self.checkpoint_dir is not None:
+            os.makedirs(self.checkpoint_dir, exist_ok=True)
+            ckpt_path = os.path.join(
+                self.checkpoint_dir, f"{self.target}_fold{fold_idx}.pt")
+            torch.save(self._net.state_dict(), ckpt_path)
+            print(f"  [EdLossNN] saved checkpoint: {ckpt_path}")
+
         return self
