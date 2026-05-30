@@ -6,7 +6,7 @@ One line per model family, all on the same x-axis.
 
 Usage:
     python plot_lambda_sweep.py
-    python plot_lambda_sweep.py --csv interference_summary_current.csv --out figure6.pdf
+    python scripts/fig6_lambda_sweep.py --csv results/2026/interference_summary_2026.csv --out figures/figure6_lambda_sweep.pdf
 """
 
 import argparse
@@ -54,7 +54,7 @@ def extract_alpha(name, prefix):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", default="interference_summary_current.csv")
+    parser.add_argument("--csv", default="results/2026/interference_summary_2026.csv")
     parser.add_argument("--out", default="figure6_lambda_sweep.pdf")
     args = parser.parse_args()
 

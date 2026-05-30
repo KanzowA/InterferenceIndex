@@ -1,97 +1,111 @@
-### mlstabilitytest
+# Interference Index for ML Formation Energy Models
 
-mlstabilitytest is a package that facilitates testing machine learning models for formation energy on stability predictions.
+This repository accompanies the manuscript:
 
-This package was created in conjunction with [this manuscript](https://www.nature.com/articles/s41524-020-00362-y).
+> **[Title]**
+> [Authors], *Journal* (year)
+> [DOI]
 
-If you use this package, please cite
-```
-Bartel, C., Trewartha, A., Wang, Q., Dunn, A., Jain, A., Ceder, G., 
-A critical examination of compound stability predictions from machine-learned formation energies, 
-npj Computational Materials 6, 97 (2020)
-```
+It extends the benchmark framework of [Bartel et al. (2020)](https://www.nature.com/articles/s41524-020-00362-y) by introducing the **interference index ξ** — a scale-invariant metric that quantifies how machine-learned formation energy errors propagate in decomposition reactions — and two training objectives that directly minimise it.
 
-The source code for this repository is available at https://github.com/CJBartel/TestStabilityML.
+---
 
-This package serves two purposes:
-1. Reproduce the results described in the aforementioned paper.
-2. Allow the community to quickly repeat this analysis for newly developed models.
+## Repository structure
 
-### Installation
-
-You can install mlstabilitytest by cloning the repository:
 ```
-git clone https://github.com/CJBartel/TestStabilityML.git
-```
-Then navigating to your cloned directory and installing:
-```
-cd TestStabilityML
-python setup.py install --user
-```
-
-### Reproducing published results
-The data used for training and testing each model was extracted from the Materials Project (MP) and is stored for convenience as a set of .json files in:
-```
-mlstabilitytest/mp_data/data/
-```
-* Ef.json is the original MP data of ground-state formation energies for all non-elemental compositions.
-* Other files are stored to make running the stability analysis faster.
-
-Classes that allow for re-training of the examined ML models are available within: 
-```
-mlstabilitytest/training/
-```
-* CGCNN is not included in this framework because training requires the storage of a very large file (all ground-state structures in Materials Project).
-* Roost is not included in this framework because it was implemented exactly as provided in https://github.com/CompRhys/roost.
-
-An example script that would re-train all models is provided at:
-```
-mlstabilitytest/train_models.py
-```
-Classes that allow for performing the stability analyses with the learned formation energies are provided at:
-```
-mlstabilitytest/stability/
-```
-Inputs (i.e., predicted energies) and outputs (i.e., resulting stabilities) are provided for each model as follows:
-```
-mlstabilitytest/ml_data/TRAINED_ON/EXPERIMENT/MODEL/
-```
-* TRAINED_ON 
-    * Ef &rarr; ML models trained on formation energies. 
-    * Ed &rarr; ML models trained on decomposition energies.
-* EXPERIMENT
-    * allMP &rarr; ML models are trained and evaluated on all of Materials Project.
-    * LiMnTMO &rarr; ML models are trained on allMP minus quaternary Li-Mn-TM-O compounds and evaluated on these excluded compounds.
-    * smact &rarr; ML models are trained on allMP minus quaternary Li-Mn-TM-O compounds and evaluated on a large list of candidate formulas in this chemical space generated using https://github.com/WMD-group/SMACT.
-    * classifier &rarr; ML models trained on classifying compounds as stable or unstable
-    * random &rarr; random error baselines for each ML model for assessment of error cancellation
-* MODEL
-    * This can be any of the 7 models studied in this work.
-* within each directory, ml_input.json is a dictionary containing formulas and their ML-predicted properties and ml_results.json is a dictionary with the resulting stability analysis for each formula.
-
-An example script that would repeat all stability analyses is available at:
-```
-mlstabilitytest/analyze_models.py
-```
-All Figures and Tables shown in the manuscript can be re-generated from the provided data using:
-```
-mlstabilitytest/plot.py
+├── data/                        # Materials Project dataset (2026 snapshot)
+├── results/                     # Pre-computed interference scores
+├── figures/                     # Paper figures (PDF/PNG)
+├── scripts/                     # Figure generation scripts
+├── sweeps/                      # Cluster training sweep scripts
+├── interference_score.py        # Compute ξ for any trained model
+├── perovskite_subset.py         # Subset analysis on ABO₃ perovskites
+├── download_mp_current.py       # Re-fetch MP data (requires API key)
+└── mlstabilitytest/             # Core package
+    ├── train_models.py          # Entry point for training
+    └── training/
+        ├── iiLossNN.py          # iiLoss model (ξ²-regularised)
+        ├── EdLossNN.py          # EdLoss model (Ed²-regularised)
+        ├── CHGNetModel.py       # CHGNet wrapper (pre-trained)
+        └── process.py          # Data splits and model registry
 ```
 
-### Repeating this analysis for a new model
-Performing the same stability analyses with new predicted formation energies will follow the example provided in:
-```
-mlstabilitytest/analyze_models.py
-```
-1. Produce ml_input.json using cross-validation
-    * {formula (str) : predicted formation energy (float, eV/atom) for formulas relevant to particular test}
-        * each experiment (allMP, LiMnTMO, smact, etc.) requires a certain set of formulas which can be obtained by comparing with mlstabilitytest/ml_data/TRAINED_ON/EXPERIMENT/MODEL/ml_input.json
-2. Evaluate how well the learned formation energies do on each experiment (allMP, LiMnTMO, smact) utilizing:
-    ```
-    mlstability.stability.StabilityAnalysis.StabilityAnalysis 
-    ```
+---
 
-### Fluidity of Materials Project
-Please note that the Materials Project database is constantly changing. While this doesn't present any issues for the direct replication of our results or the application of new models trained on formation energy, it may complicate the strict replication of our results for models trained on multiple properties (e.g., band gap and formation energy learned simultaneously).
+## Installation
 
-#### Please feel free to post an issue or contact cbartel [at] berkeley [dot] edu for assistance (email will be faster)
+```bash
+git clone https://github.com/KanzowA/InterferenceIndex
+cd InterferenceIndex
+conda env create -f environment.yml
+conda activate interference
+pip install -e .
+```
+
+---
+
+## Reproducing results
+
+**1. Train models** (GPU recommend, but also works on CPU; runs 5-fold CV on the 2026 MP dataset):
+```bash
+# iiLoss sweep
+bash sweeps/sweep_iiLoss.sh
+
+# EdLoss + PCGrad sweep
+bash sweeps/sweep_EdLoss_pcgrad.sh
+```
+
+**2. Compute interference scores:**
+```bash
+python scripts/interference_score.py allMP_2026
+python scripts/interference_score.py allMP_2020
+```
+
+Results are written to `results/2026/` and `results/2020/` respectively.
+Pre-computed results for all models in the paper are already provided there.
+
+**3. Reproduce figures:**
+```bash
+python figures/generate_figures.py        # all figures
+python scripts/fig6_lambda_sweep.py --csv results/2026/interference_summary_2026.csv
+python scripts/fig5_gradient_fields.py
+# etc.
+```
+
+---
+
+## The interference index
+
+For a decomposition reaction X → Σ_k v_k P_k, define the error vector **c** with components c_i = v_i · δ_i where δ_i = ΔH_f^ML - ΔH_f^DFT. The interference index is:
+
+ξ = |Σ c_i| / ‖**c**‖ = √N · |cos θ|
+
+ξ → 0: errors cancel across the reaction (favourable)
+ξ → √N: errors align constructively (unfavourable)
+
+ξ is scale-invariant and invariant to systematic biases (since reaction weights sum to zero), making it a more informative diagnostic than decomposition energy MAE alone.
+
+---
+
+## Citation
+
+If you use this repository, please cite both this work and Bartel et al.:
+
+```bibtex
+@article{[key],
+  title   = {[Title]},
+  author  = {[Authors]},
+  journal = {npj Computational Materials},
+  year    = {2025},
+  doi     = {[DOI]}
+}
+
+@article{bartel2020,
+  title   = {A critical examination of compound stability predictions from machine-learned formation energies},
+  author  = {Bartel, C. and Trewartha, A. and Wang, Q. and Dunn, A. and Jain, A. and Ceder, G.},
+  journal = {npj Computational Materials},
+  volume  = {6},
+  pages   = {97},
+  year    = {2020}
+}
+```

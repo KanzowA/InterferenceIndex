@@ -33,14 +33,11 @@ mlstabilitytest/ml_data/Ed/allMP/*/tmp*.json
 mlstabilitytest/ml_data/Ed/allMP/*/ml_input.json
 mlstabilitytest/ml_data/Ed/allMP_single/
 
+# Trained model predictions — large files (~150MB), not tracked in git.
+# Download from [Zenodo DOI] and place in mlstabilitytest/ml_data/Ef/allMP_current/
+mlstabilitytest/ml_data/Ef/allMP_current/
+mlstabilitytest/ml_data/Ef/allMP_current_finetune/
+mlstabilitytest/figures/
+
 # Generated output files (regeneratable)
-interference_scores.csv
-interference_scores_*.csv
-interference_summary.csv
-propagation_circles.png
-propagation_comparison.png
-score_vs_error.png
-mlstabilitytest/analyze_learning.py
-mlstabilitytest/ananlyze_classifiers.py
-mlstabilitytest/old/
-mlstabilitytest/figures/*pdf
+# interference_scores.c

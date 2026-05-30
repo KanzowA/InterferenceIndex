@@ -42,11 +42,19 @@ import csv
 from collections import defaultdict
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-HERE     = os.path.dirname(os.path.abspath(__file__))
-REPO_DIR = os.path.join(HERE, "mlstabilitytest")
+HERE      = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
+REPO_DIR  = os.path.join(REPO_ROOT, "mlstabilitytest")
 DATA_DIR = os.path.join(REPO_DIR, "mp_data", "data")
 
 HULLOUT = os.path.join(DATA_DIR, "hullout.json")
+
+# Automatic hullout selection per split — can be overridden with --hullout
+HULLOUT_MAP = {
+    "allMP_2026":           "data/hullout_current.json",
+    "allMP_2026_finetune":  "data/hullout_current.json",
+    "allMP_2026_single":    "data/hullout_current.json",
+}
 EF_DFT  = os.path.join(DATA_DIR, "Ef.json")
 
 # Base Bartel-et-al. models (fixed order)
@@ -57,7 +65,6 @@ MODELS_BASE = ["ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet",
 # MODELS is rebuilt in main() — do not edit manually.
 MODELS = list(MODELS_BASE)
 
-EXCLUDE_N1 = True   # set False to keep single-participant reactions
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -398,7 +405,7 @@ def main():
     # ── Parse arguments ───────────────────────────────────────────────────────
     import argparse
     parser = argparse.ArgumentParser(description="Compute interference scores for ML models.")
-    parser.add_argument("split", nargs="?", default="allMP",
+    parser.add_argument("split", nargs="?", default="allMP_2020",
                         help="Data split to evaluate (default: allMP)")
     parser.add_argument("--hullout", default=None,
                         help="Path to hullout JSON file (default: mp_data/data/hullout.json). "
@@ -409,14 +416,17 @@ def main():
     ML_DIR = os.path.join(REPO_DIR, "ml_data", "Ef", split)
     print(f"Using split: {split}  →  {ML_DIR}\n")
 
-    # Override HULLOUT path if --hullout was given
+    # Select hullout: auto-map by split, then override with --hullout if given
     global HULLOUT
+    if split in HULLOUT_MAP:
+        HULLOUT = os.path.join(HERE, HULLOUT_MAP[split])
+        print(f"  [hullout] auto-selected for split '{split}': {HULLOUT}")
     if args.hullout:
-        # Accept both absolute paths and bare filenames (resolved relative to REPO_DIR)
         candidate = args.hullout
         if not os.path.isabs(candidate):
-            candidate = os.path.join(REPO_DIR, candidate)
+            candidate = os.path.join(REPO_ROOT, candidate)
         HULLOUT = candidate
+        print(f"  [hullout] overridden by --hullout: {HULLOUT}")
     print(f"Using hullout: {HULLOUT}\n")
 
     # ── Auto-detect iiLoss_* and EdLoss_* variants ────────────────────────────
@@ -481,26 +491,34 @@ def main():
 
         # ── Per-compound ξ scores and Ed errors ───────────────────────────
         scores    = []
-        ed_errors = []   # Ed_ML - Ed_DFT  per compound
+        ed_errors = []   # Ed_ML - Ed_DFT per compound (includes N=1)
         n_ok, n_skip = 0, 0
 
         for compound in valid_compounds:
             entry   = hullout[compound]
             rxn_str = entry["rxn"]
             result_err = interference_score(compound, rxn_str, ml_ef, dft_ef, mode='error')
-            result_ml  = interference_score(compound, rxn_str, ml_ef, dft_ef, mode='ml')
 
-            if result_err is None or result_ml is None:
+            if result_err is None:
                 n_skip += 1
                 continue
 
             xi_err, N, signed_sum = result_err
-            if EXCLUDE_N1 and N == 1:
+
+            # Ed MAE: include ALL compounds (N=1 and above)
+            # Ed_ML - Ed_DFT = -signed_sum  (signed_sum = Ed_DFT - Ed_ML)
+            ed_err = -signed_sum
+            ed_errors.append(ed_err)
+
+            # xi: exclude single-participant reactions (N=1 is geometrically undefined)
+            if N == 1:
                 n_skip += 1
                 continue
 
-            # Ed_ML - Ed_DFT = -signed_sum  (since signed_sum = Ed_DFT - Ed_ML)
-            ed_err = -signed_sum
+            result_ml = interference_score(compound, rxn_str, ml_ef, dft_ef, mode='ml')
+            if result_ml is None:
+                n_skip += 1
+                continue
 
             sqrt_N    = math.sqrt(N)
             theta_err = math.acos(min(xi_err / sqrt_N, 1.0))
@@ -512,7 +530,6 @@ def main():
 
             n_ok += 1
             scores.append(xi_err)
-            ed_errors.append(ed_err)
             results.append({
                 "model":     model,
                 "compound":  compound,
@@ -530,16 +547,20 @@ def main():
                 "sqrt_N":    round(sqrt_N, 4),
             })
 
-        # Ed MAE / RMSE over scored compounds
+        # Ed MAE / RMSE over all compounds with reactions (including N=1)
         ed_mae  = sum(abs(e) for e in ed_errors) / len(ed_errors) if ed_errors else float('nan')
         ed_rmse = math.sqrt(sum(e**2 for e in ed_errors) / len(ed_errors)) if ed_errors else float('nan')
 
-        print(f"  scored {n_ok} compounds, skipped {n_skip}")
+        print(f"  scored {n_ok} for xi  |  {len(ed_errors)} for Ed MAE  |  skipped {n_skip}")
         summary[model] = {"scores": scores, "mae": mae, "rmse": rmse,
-                          "ed_mae": ed_mae, "ed_rmse": ed_rmse, "n": n_ok}
+                          "ed_mae": ed_mae, "ed_rmse": ed_rmse,
+                          "n": n_ok, "n_ed": len(ed_errors)}
 
     # ── Write per-compound CSV ─────────────────────────────────────────────────
-    out_csv = "interference_scores.csv"
+    year = "2026" if split.startswith("allMP_2026") else "2020"
+    out_dir = os.path.join(REPO_ROOT, "results", year)
+    os.makedirs(out_dir, exist_ok=True)
+    out_csv = os.path.join(out_dir, f"interference_scores_{year}.csv")
     fieldnames = ["model", "compound", "stability", "Ef_DFT", "Ed_DFT", "Ed_err",
                   "xi_err",   "delta_err", "theta_err",
                   "xi_ml",    "delta_ml",  "theta_ml",
@@ -551,17 +572,17 @@ def main():
     print(f"\nPer-compound scores written to  {out_csv}")
 
     # ── Write summary CSV ──────────────────────────────────────────────────────
-    sum_csv = "interference_summary.csv"
+    sum_csv = os.path.join(out_dir, f"interference_summary_{year}.csv")
     with open(sum_csv, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["model", "n", "Ef_MAE", "Ef_RMSE",
+        w.writerow(["model", "n_xi", "n_ed", "Ef_MAE", "Ef_RMSE",
                     "Ed_MAE", "Ed_RMSE", "rms_xi", "median_xi"])
         for model, s in summary.items():
             sc      = sorted(s["scores"])
             n       = len(sc)
             rms_xi  = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
             med_xi  = sc[n // 2] if n else float('nan')
-            w.writerow([model, s["n"],
+            w.writerow([model, s["n"], s["n_ed"],
                         round(s["mae"],     4),
                         round(s["rmse"],    4),
                         round(s["ed_mae"],  4),

@@ -23,12 +23,6 @@ except ImportError:
     ALIGNNModel = None
     print("[process.py] ALIGNN unavailable (alignn/jarvis-tools not installed)")
 
-try:
-    from mlstabilitytest.training.CHGNetModel import CHGNetModel
-except ImportError:
-    CHGNetModel = None
-    print("[process.py] CHGNet unavailable (pip install chgnet)")
-
 base_path = dirname(dirname(abspath(__file__)))
 data_path = join(base_path, "mp_data", "data")
 
@@ -137,7 +131,6 @@ model_dictionary = _ModelDict({
     **( {"ElemNet": lambda target: ElemNet(target)} if ElemNet else {} ),
     **( {"AutoMat": lambda target: AutoMat(target)} if AutoMat else {} ),
     **( {"ALIGNN":  lambda target: ALIGNNModel(target)} if ALIGNNModel else {} ),
-    **( {"CHGNet":  lambda target: CHGNetModel(target)} if CHGNetModel else {} ),
 })
 
 # List of available target properties
@@ -145,7 +138,7 @@ target_list = ["Ed", "Ef"]
 
 
 # Functions to perform training and prediction for a problem, given an input model and target property
-def allMP(model, target):
+def allMP_2020(model, target):
 
     input_file = join(data_path, "hullout.json")
 
@@ -181,7 +174,7 @@ def allMP(model, target):
     return predictions
 
 
-def allMP_single(model, target, test_size=0.2, random_state=10):
+def allMP_2020_single(model, target, test_size=0.2, random_state=10):
     """80/20 train/test split — faster iteration than 5-fold CV."""
     from sklearn.model_selection import train_test_split
 
@@ -306,12 +299,12 @@ def smact(model, target):
     return predictions
 
 
-def allMP_current(model, target):
+def allMP_2026(model, target):
     """
     Same 5-fold CV as allMP, but trained/evaluated on the 2026 MP dataset
     (hullout_current.json, downloaded via download_mp_current.py).
-    Saves predictions to ml_data/Ef/allMP_current/<model>/ml_input.json.
-    Run interference_score.py with --split allMP_current --hullout hullout_current.json.
+    Saves predictions to ml_data/Ef/allMP_2026/<model>/ml_input.json.
+    Run interference_score.py with --split allMP_2026 --hullout hullout_current.json.
     """
     input_file = join(repo_path, "hullout_current.json")
 
@@ -347,9 +340,9 @@ def allMP_current(model, target):
     return predictions
 
 
-def allMP_current_single(model, target, test_size=0.2, random_state=10):
+def allMP_2026_single(model, target, test_size=0.2, random_state=10):
     """
-    80/20 single split on the 2026 MP dataset — 5× faster than allMP_current.
+    80/20 single split on the 2026 MP dataset — 5× faster than allMP_2026.
     Use for sweeps where relative ranking matters more than CV stability.
     """
     from sklearn.model_selection import train_test_split
@@ -376,62 +369,23 @@ def allMP_current_single(model, target, test_size=0.2, random_state=10):
     return {labels[test_idx[i]]: preds[i] for i in range(len(test_idx))}
 
 
-def allMP_current_finetune(model, target):
+def allMP_2026_finetune(model, target):
     """
-    Two-stage fine-tuning on allMP_current.
-    Uses the same 5-fold CV split as allMP_current (random_state=10).
+    Two-stage fine-tuning on allMP_2026.
+    Uses the same 5-fold CV split as allMP_2026 (random_state=10).
     The model (iiLoss_finetune_<lam>) loads fold-specific pretrained weights
     from checkpoints/<target>/ before computing references and fine-tuning.
     Run after saving checkpoints with iiLoss_save_0.0.
     """
-    return allMP_current(model, target)
-
-
-def allMP_current_v2(model, target):
-    """
-    Same 5-fold CV as allMP_current, but reads hullout_current_v2.json which
-    includes material_id fields required by structure-based models (ALIGNN etc.).
-    """
-    input_file = join(repo_path, "hullout_current_v2.json")
-
-    print("Reading 2026 MP data (v2, with material_ids) from {}".format(input_file))
-
-    with open(input_file, 'r') as f:
-        input_data = json.load(f)
-
-    print("Preprocessing data")
-    features, targets, labels = model.preprocess(input_data)
-
-    predictions = dict()
-
-    kf = KFold(n_splits=5, shuffle=True, random_state=10)
-
-    iFold = 0
-    for train_indices, test_indices in kf.split(features):
-        print("Training on fold {}".format(iFold))
-        iFold += 1
-
-        features_train = features[train_indices]
-        targets_train  = targets[train_indices]
-        features_test  = features[test_indices]
-        labels_test    = labels[test_indices]
-
-        predictions_this_fold = model.fit_and_predict(
-            Xtrain=features_train, Ytrain=targets_train, Xtest=features_test)
-
-        predictions = {**predictions,
-                       **{labels_test[i]: predictions_this_fold[i]
-                          for i in range(len(test_indices))}}
-
-    return predictions
+    return allMP_2026(model, target)
 
 
 # Dictionary of available problem functions
-problem_dictionary = {"allMP":                   allMP,
-                      "allMP_single":            allMP_single,
-                      "allMP_current":           allMP_current,
-                      "allMP_current_single":    allMP_current_single,
-                      "allMP_current_finetune":  allMP_current_finetune,
-                      "allMP_current_v2":        allMP_current_v2,
+problem_dictionary = {"allMP_2020":                   allMP_2020,
+                      "allMP_2020_single":       allMP_2020_single,
+                      "allMP_2026":           allMP_2026,
+                      "allMP_2026_single":    allMP_2026_single,
+                      "allMP_2026_finetune":  allMP_2026_finetune,
                       "LiMnTMO":                 LiMnTMO,
                       "smact":                   smact}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 

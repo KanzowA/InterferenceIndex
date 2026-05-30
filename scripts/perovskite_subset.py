@@ -9,7 +9,7 @@ found in ml_data/Ef/<split>/.
 
 Usage (from the TestStabilityMl directory):
     python perovskite_subset.py
-    python perovskite_subset.py allMP_current --hullout hullout_current.json
+    python perovskite_subset.py allMP_2026 --hullout data/hullout_current.json
 
 Output:
     perovskite_summary.csv  — per-model metrics on the ABO₃ subset
@@ -19,8 +19,9 @@ import os, sys, re, json, math, csv, argparse
 from collections import defaultdict
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-HERE     = os.path.dirname(os.path.abspath(__file__))
-REPO_DIR = os.path.join(HERE, "mlstabilitytest")
+HERE      = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
+REPO_DIR  = os.path.join(REPO_ROOT, "mlstabilitytest")
 DATA_DIR = os.path.join(REPO_DIR, "mp_data", "data")
 HULLOUT  = os.path.join(DATA_DIR, "hullout.json")
 
@@ -123,7 +124,7 @@ def load_json(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("split", nargs="?", default="allMP")
+    parser.add_argument("split", nargs="?", default="allMP_2020")
     parser.add_argument("--hullout", default=None)
     args = parser.parse_args()
 
@@ -131,7 +132,7 @@ def main():
     if args.hullout:
         candidate = args.hullout
         if not os.path.isabs(candidate):
-            candidate = os.path.join(HERE, candidate)
+            candidate = os.path.join(REPO_ROOT, candidate)
         hullout_path = candidate
 
     ML_DIR = os.path.join(REPO_DIR, "ml_data", "Ef", args.split)
@@ -254,7 +255,7 @@ def main():
               f"ξ_mean={mean_xi:.4f}  ξ_med={med_xi:.4f}")
 
     # ── Save CSV ───────────────────────────────────────────────────────────────
-    out_path = os.path.join(HERE, "perovskite_summary.csv")
+    out_path = os.path.join(REPO_ROOT, "results", "perovskite_summary.csv")
     with open(out_path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(header)
