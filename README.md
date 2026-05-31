@@ -88,9 +88,7 @@ python scripts/figures/fig5_gradient_fields.py
 
 For a decomposition reaction $A = Σ_i \nu_i \Delta_\mathrm{f} H_i$, define the error vector **c** with components $c_i = \nu_i · \delta_i$ where $\delta_i = \Delta_\mathrm{f} H_i^\mathrm{ML} − \Delta_\mathrm{f} H_i^\mathrm{DFT}$. The interference index is:
 
-\begin{equation*}
-\xi = \frac{\left|\sum_i c_i\right|}{\left|\left|\mathbf{c}\right|\right|} = \sqrt{N}\cdot \cos{\theta}
-\end{equation*}
+\[\xi = \frac{\left|\sum_i c_i\right|}{\left|\left|\mathbf{c}\right|\right|} = \sqrt{N}\cdot \cos{\theta}\]
 
 $\xi \rightarrow 0$: errors cancel across the reaction (favourable)
 $\xi \rightarrow \sqrt{N}$: errors align constructively (unfavourable)
