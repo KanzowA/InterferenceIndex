@@ -86,7 +86,7 @@ python scripts/figures/fig5_gradient_fields.py
 
 ## The interference index
 
-For a decomposition reaction X → Σ_k v_k P_k, define the error vector **c** with components c_i = v_i · δ_i where δ_i = ΔHf^ML − ΔHf^DFT. The interference index is:
+For a decomposition reaction $A → Σ_i \omega_i P_k$, define the error vector **c** with components c_i = v_i · δ_i where δ_i = ΔHf^ML − ΔHf^DFT. The interference index is:
 
 ξ = |Σ c_i| / ‖**c**‖ = √N · |cos θ|
 
