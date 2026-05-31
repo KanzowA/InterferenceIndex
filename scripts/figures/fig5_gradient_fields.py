@@ -10,16 +10,25 @@ Background in both panels: ξ heatmap (RdBu_r / TwoSlopeNorm),
 consistent with Figures 1–3.
 """
 
+import os
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 
-# ── Appearance ────────────────────────────────────────────────────────────────
+# ── Journal style (npj Computational Materials) ──────────────────────────
+# source_pt = target_print_pt × (fig_width / journal_col_width)
+# Targets 7 pt (body) and 6 pt (minor) at 170 mm double-column.
+_JOURNAL_COL_W = 6.69          # 170 mm in inches
+_FIG_W         = 12.0          # this figure's width in inches
+_FS    = round(7.0 * _FIG_W / _JOURNAL_COL_W)   # → 13 pt  (body / axis labels)
+_FS_SM = round(6.0 * _FIG_W / _JOURNAL_COL_W)   # → 11 pt  (minor annotations)
+_FS_LEG, _FS_CB = _FS, _FS
+_FS_PANEL = 20   # panel labels a/b/c — fixed across all figures
 plt.rcParams.update({
     'font.family': 'sans-serif',
-    'font.size':   11,
+    'font.size':   _FS,
     'axes.linewidth': 0.8,
 })
 
@@ -36,24 +45,26 @@ R1f, R2f = np.meshgrid(xf, yf)
 Qf  = R1f**2 + R2f**2
 xi_bg = np.where(Qf > 1e-8, np.abs(R1f + R2f) / np.sqrt(Qf), 0.0)
 
-# ── Arrow grid (quiver) ───────────────────────────────────────────────────────
-NS = 10
-xs = np.linspace(-EXTENT, EXTENT, NS)
-ys = np.linspace(-EXTENT, EXTENT, NS)
-R1s, R2s = np.meshgrid(xs, ys)
-Ss  = R1s + R2s
-Qs  = R1s**2 + R2s**2
-near_orig = Qs < 0.07
+# ── Arrow grids — left panel (10×10), right panel (13×13) ──────────
+def _arrow_grid(NS):
+    xs = np.linspace(-EXTENT, EXTENT, NS)
+    ys = np.linspace(-EXTENT, EXTENT, NS)
+    R1, R2 = np.meshgrid(xs, ys)
+    return xs, ys, R1, R2
 
-# (a) -∇MSE = -2r
-U_mse = np.where(~near_orig, -2.0 * R1s, np.nan)
-V_mse = np.where(~near_orig, -2.0 * R2s, np.nan)
+xs_a, ys_a, R1s_a, R2s_a = _arrow_grid(10)
+near_a = R1s_a**2 + R2s_a**2 < 0.07
+U_mse = np.where(~near_a, -2.0 * R1s_a, np.nan)
+V_mse = np.where(~near_a, -2.0 * R2s_a, np.nan)
 
-# (b) -∇ξ²
-_Q    = np.where(Qs > 1e-8, Qs, 1.0)
-xi2s  = np.where(Qs > 1e-8, Ss**2 / _Q, 0.0)
-U_xi2 = np.where(~near_orig, -(2.0/_Q) * (Ss - xi2s * R1s), np.nan)
-V_xi2 = np.where(~near_orig, -(2.0/_Q) * (Ss - xi2s * R2s), np.nan)
+xs_b, ys_b, R1s_b, R2s_b = _arrow_grid(13)
+Ss_b  = R1s_b + R2s_b
+Qs_b  = R1s_b**2 + R2s_b**2
+near_b = Qs_b < 0.07
+_Qb   = np.where(Qs_b > 1e-8, Qs_b, 1.0)
+xi2b  = np.where(Qs_b > 1e-8, Ss_b**2 / _Qb, 0.0)
+U_xi2 = np.where(~near_b, -(2.0/_Qb) * (Ss_b - xi2b * R1s_b), np.nan)
+V_xi2 = np.where(~near_b, -(2.0/_Qb) * (Ss_b - xi2b * R2s_b), np.nan)
 
 def _unit(U, V):
     """Normalise to unit vectors; NaN where undefined."""
@@ -69,10 +80,10 @@ ext = EXTENT * 0.93   # reference-line extent
 theta_c = np.linspace(0, 2 * np.pi, 400)
 
 panels = [
-    (axes[0], U_mse,  V_mse,  'a)',
+    (axes[0], U_mse,  V_mse,  xs_a, ys_a, 'a',
      r'$\mathcal{L}_\mathrm{MSE} = \|\mathbf{r}\|^2$',
      r'$\nabla_\mathbf{r}\,\mathcal{L}_\mathrm{MSE} = 2\mathbf{r}$'),
-    (axes[1], U_xi2,  V_xi2,  'b)',
+    (axes[1], U_xi2,  V_xi2,  xs_b, ys_b, 'b',
      r'$\mathcal{L}_{\xi^2} = \xi^2 = \dfrac{S^2}{Q}$',
      (r'$\nabla_\mathbf{r}\,\xi^2 = \dfrac{2}{Q}'
       r'\!\left(S\mathbf{1} - \xi^2\mathbf{r}\right)$'
@@ -80,7 +91,7 @@ panels = [
       r'$S = \sum r_i,\quad Q = \|\mathbf{r}\|^2$')),
 ]
 
-for ax, U, V, panel_lbl, title_str, eq_str in panels:
+for ax, U, V, xs, ys, panel_lbl, title_str, eq_str in panels:
 
     # ── ξ background ─────────────────────────────────────────────────────────
     ax.pcolormesh(xf, yf, xi_bg, cmap=CMAP, norm=norm,
@@ -107,13 +118,13 @@ for ax, U, V, panel_lbl, title_str, eq_str in panels:
     ax.plot(0, 0, 'ko', ms=3.5, zorder=5)
 
     # ── Labels / equations ────────────────────────────────────────────────────
-    ax.text(-0.14, 1.04, panel_lbl, transform=ax.transAxes,
-            fontsize=19, fontweight='bold', va='bottom')
-    ax.set_title(title_str, fontsize=12, pad=7)
+    ax.text(-0.12, 1.05, panel_lbl, transform=ax.transAxes,
+            fontsize=_FS_PANEL, fontweight='bold', va='bottom')
+    ax.set_title(title_str, fontsize=_FS, pad=7)
 
     ax.text(0.97, 0.03, eq_str,
             transform=ax.transAxes,
-            fontsize=9.5, va='bottom', ha='right', linespacing=1.6,
+            fontsize=_FS_SM, va='bottom', ha='right', linespacing=1.6,
             bbox=dict(boxstyle='round,pad=0.45', fc='white',
                       alpha=0.88, ec='#aaaaaa', lw=0.7))
 
@@ -123,8 +134,8 @@ for ax, U, V, panel_lbl, title_str, eq_str in panels:
     ax.set_aspect('equal')
     ax.set_xticks([-2, -1, 0, 1, 2])
     ax.set_yticks([-2, -1, 0, 1, 2])
-    ax.set_xlabel(r'$r_1$', fontsize=12)
-    ax.set_ylabel(r'$r_2$', fontsize=12)
+    ax.set_xlabel(r'$r_1$', fontsize=_FS)
+    ax.set_ylabel(r'$r_2$', fontsize=_FS)
     ax.tick_params(top=False, right=False)
 
 # ── Shared colorbar ───────────────────────────────────────────────────────────
@@ -132,9 +143,20 @@ cbar_ax = fig.add_axes([0.90, 0.15, 0.018, 0.70])
 sm = plt.cm.ScalarMappable(cmap=CMAP, norm=norm)
 sm.set_array([])
 cbar = fig.colorbar(sm, cax=cbar_ax)
-cbar.set_label(r'$\xi$', fontsize=13)
+cbar.set_label(r'$\xi$', fontsize=_FS_CB)
 cbar.set_ticks([0, 1, SQ2])
 cbar.set_ticklabels(['0', '1', r'$\sqrt{2}$'])
 
-plt.savefig('figures/figure5_gradient_fields.png', dpi=300, bbox_inches='tight')
-print('Saved figure5_gradient_fields.png')
+def main():
+    import argparse
+    _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", default=os.path.join(_REPO, "figures", "figure5_gradient_fields.png"))
+    args = parser.parse_args()
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    plt.savefig(args.out, dpi=300, bbox_inches="tight")
+    print(f"Saved → {args.out}")
+
+
+if __name__ == "__main__":
+    main()

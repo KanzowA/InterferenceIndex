@@ -1,0 +1,30 @@
+# Normalize line endings: store LF in git, use native on checkout
+* text=auto
+
+# Force LF for all text files (Python, Markdown, CSV, etc.)
+*.py    text eol=lf
+*.md    text eol=lf
+*.rst   text eol=lf
+*.txt   text eol=lf
+*.csv   text eol=lf
+*.tsv   text eol=lf
+*.json  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.sh    text eol=lf
+
+# Binary files — never touch line endings
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.pdf   binary
+*.zip   binary
+*.pkl   binary
+*.pt    binary
+*.pth   binary
+*.h5    binary
+*.hdf5  binary

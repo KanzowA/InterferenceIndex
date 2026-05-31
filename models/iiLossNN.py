@@ -489,4 +489,8 @@ def _parse_rxn(rxn_str, label_to_pos):
         token = token.strip()
         m = re.match(r'^([\d.]+)_(.+)$', token)
         if m:
-            coeff   = float(m.group
+            coeff   = float(m.group(1))
+            formula = m.group(2).strip()
+            if formula in label_to_pos:
+                pairs.append((label_to_pos[formula], coeff))
+    return pairs

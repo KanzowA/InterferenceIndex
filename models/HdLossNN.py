@@ -9,7 +9,7 @@ where
     Hd²     = mean_r( (Σ_k ω_k δ_k)² )   = mean_r( ΔA_obs² )
 
 Both terms are normalised by periodically-refreshed reference values so
-that the α-weighting stays honest throughout training.
+that the λ-weighting stays honest throughout training.
 
 Relationship to iiLossNN
 ------------------------
@@ -53,7 +53,7 @@ class HdLossNN(iiLossNN):
     ----------
     target : str
         Regression target key ('Hf' or 'Hd').
-    alpha : float
+    lam : float
         Weight of Hd² loss term (0 = pure MSE, 1 = pure Hd²).
     eps : float
         Stabiliser added to Hd²_ref denominator (eV²/atom²).
@@ -66,7 +66,7 @@ class HdLossNN(iiLossNN):
     epochs : int
         Total training epochs (full-batch).
     warmup_frac : float
-        Fraction of epochs to train with α=0 (pure MSE warmup).
+        Fraction of epochs to train with λ=0 (pure MSE warmup).
     renorm_every : int
         Recompute MSE_ref and Hd²_ref every N epochs (0 = never after init).
     grad_clip : float
@@ -92,7 +92,7 @@ class HdLossNN(iiLossNN):
     def __init__(
         self,
         target          = 'Hf',
-        alpha           = 0.1,
+        lam           = 0.1,
         eps             = 1e-4,
         hidden          = (1024, 512, 256, 128),
         dropout         = 0.0,
@@ -128,7 +128,7 @@ class HdLossNN(iiLossNN):
             finetune_epochs = finetune_epochs,
             use_pcgrad      = use_pcgrad,
         )
-        self.alpha = alpha
+        self.lam = lam
 
     # ── reference computation ─────────────────────────────────────────────────
 
@@ -239,12 +239,12 @@ class HdLossNN(iiLossNN):
         warmup_end = int(actual_warmup * actual_epochs)
         ramp_end   = int(2 * actual_warmup * actual_epochs)
 
-        def effective_alpha(epoch: int) -> float:
+        def effective_lam(epoch: int) -> float:
             if epoch < warmup_end:
                 return 0.0
             if epoch < ramp_end:
-                return self.alpha * (epoch - warmup_end) / max(ramp_end - warmup_end, 1)
-            return self.alpha
+                return self.lam * (epoch - warmup_end) / max(ramp_end - warmup_end, 1)
+            return self.lam
 
         # ── initial reference values (calibrated at checkpoint, not random init)
         mse_ref, hd2_ref = self._compute_refs(
@@ -269,10 +269,10 @@ class HdLossNN(iiLossNN):
                     has_rxn, dev
                 )
 
-            alpha_eff = effective_alpha(epoch)
+            lam_eff = effective_lam(epoch)
 
             # ── PCGrad path ───────────────────────────────────────────────────
-            if self.use_pcgrad and has_rxn and alpha_eff > 0:
+            if self.use_pcgrad and has_rxn and lam_eff > 0:
 
                 # MSE gradient
                 optimizer.zero_grad()
@@ -303,7 +303,7 @@ class HdLossNN(iiLossNN):
                 # Apply combined gradient
                 optimizer.zero_grad()
                 for p, gm, gp in zip(self._net.parameters(), g_mse, g_ed_proj):
-                    p.grad = (1.0 - alpha_eff) * gm + alpha_eff * gp
+                    p.grad = (1.0 - lam_eff) * gm + lam_eff * gp
 
                 if self.grad_clip > 0:
                     nn.utils.clip_grad_norm_(
@@ -321,14 +321,14 @@ class HdLossNN(iiLossNN):
 
                 mse_loss = (delta ** 2).mean() / mse_ref
 
-                if has_rxn and alpha_eff > 0:
+                if has_rxn and lam_eff > 0:
                     c        = R_coeff * delta[R_idx] * R_mask
                     hd_resid = c.sum(dim=1)
                     ed_loss  = (hd_resid ** 2).mean() / hd2_ref
                 else:
                     ed_loss = torch.zeros(1, device=dev).squeeze()
 
-                loss = (1.0 - alpha_eff) * mse_loss + alpha_eff * ed_loss
+                loss = (1.0 - lam_eff) * mse_loss + lam_eff * ed_loss
                 loss.backward()
 
                 if self.grad_clip > 0:
@@ -348,8 +348,8 @@ class HdLossNN(iiLossNN):
                 msg   = (f'  [HdLossNN/{mode}] ep {epoch:>4d} [{phase}] '
                          f'loss={loss.item():.5f}  '
                          f'MSE/ref={mse_loss.item():.5f}  '
-                         f'alpha_eff={alpha_eff:.3f}')
-                if alpha_eff > 0 and has_rxn:
+                         f'lam_eff={lam_eff:.3f}')
+                if lam_eff > 0 and has_rxn:
                     msg += f'  Hd²/ref={ed_log.item():.5f}'
                 print(msg)
 

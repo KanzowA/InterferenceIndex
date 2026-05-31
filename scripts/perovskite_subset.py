@@ -83,27 +83,40 @@ def is_element(formula: str) -> bool:
 
 
 def num_atoms(formula: str) -> int:
-    counts = re.findall(r'[A-Z][a-z]?(\d+)', formula)
-    return sum(int(n) for n in counts) if counts else 1
+    """Count total atoms, including elements with implicit stoichiometry 1."""
+    tokens = re.findall(r'([A-Z][a-z]*)(\d*)', formula)
+    return sum(int(n) if n else 1 for el, n in tokens if el) or 1
 
 
-def interference_score(compound, rxn_str, ml_hf, dft_hf):
-    if compound not in ml_hf or compound not in dft_hf:
-        return None
+def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error'):
     products = parse_rxn(rxn_str)
     N_c = num_atoms(compound)
-    c   = []
+    c = []
 
+    if compound not in ml_hf or compound not in dft_hf:
+        return None
     if not is_element(compound):
-        c.append(-(ml_hf[compound] - dft_hf[compound]))
+        delta_c = ml_hf[compound] - dft_hf[compound] if mode == 'error' else ml_hf[compound]
+        c.append(-delta_c)
 
-    for amt_k, fk in products:
-        if is_element(fk):
+    for amt_k, formula_k in products:
+        if is_element(formula_k):
             continue
-        if fk not in ml_hf or fk not in dft_hf:
+        if formula_k not in ml_hf or formula_k not in dft_hf:
             return None
-        N_k = num_atoms(fk)
-        c.append(amt_k * N_k * (ml_hf[fk] - dft_hf[fk]) / N_c)
+        delta_k = ml_hf[formula_k] - dft_hf[formula_k] if mode == 'error' else ml_hf[formula_k]
+        N_k = num_atoms(formula_k)
+        c.append(amt_k * N_k * delta_k / N_c)
+                 
+    if len(c) == 0:
+        return None
+
+    signed_sum  = sum(c)           # = Hd_DFT - Hd_ML  (for mode='error')
+    numerator   = abs(signed_sum)
+    denominator = math.sqrt(sum(x**2 for x in c))
+
+    if denominator < 1e-12:
+        return None
 
     if not c:
         return None
@@ -127,14 +140,17 @@ def main():
     parser.add_argument("--hullout", default=None)
     args = parser.parse_args()
 
-    hullout_path = HULLOUT
+    year = "2026" if "2026" in args.split else "2020"
+
+    # Bug fix 1: default hullout to the year-matched file, not always 2020
+    default_hullout = os.path.join(REPO_ROOT, "data", year, f"hullout_{year}.json")
     if args.hullout:
         candidate = args.hullout
         if not os.path.isabs(candidate):
             candidate = os.path.join(REPO_ROOT, candidate)
         hullout_path = candidate
-
-    year = "2026" if "2026" in args.split else "2020"
+    else:
+        hullout_path = default_hullout
     ML_DIR = os.path.join(REPO_ROOT, "data", year, "ml", "Hf")
     print(f"Split   : {args.split}")
     print(f"Hullout : {hullout_path}")
@@ -155,7 +171,10 @@ def main():
         and not is_element(f)
     }
 
-    dft_hf = {f: hullout[f]["Hf"] for f in perov_with_rxn}
+    # Bug fix 2: ξ computation needs DFT Hf for reaction products (not just perovskites)
+    dft_hf_all  = {f: v["Hf"] for f, v in hullout.items()
+                   if isinstance(v, dict) and "Hf" in v}
+    dft_hf_perov = {f: hullout[f]["Hf"] for f in perov_with_rxn}
     print(f"ABO₃ perovskites in hullout : {len(perovskites)}")
     print(f"  with reaction + Hf        : {len(perov_with_rxn)}\n")
 
@@ -188,8 +207,8 @@ def main():
         # Hf MAE / RMSE on perovskite subset
         hf_errors = []
         for f in perov_with_rxn:
-            if f in ml_hf and f in dft_hf:
-                hf_errors.append(ml_hf[f] - dft_hf[f])
+            if f in ml_hf and f in dft_hf_perov:
+                hf_errors.append(ml_hf[f] - dft_hf_perov[f])
 
         if not hf_errors:
             print(f"  [SKIP] {model}: no predictions for perovskite subset")
@@ -210,9 +229,9 @@ def main():
 
             # Hd_ML = sum of weighted ML Hf values in the reaction
             products  = parse_rxn(rxn_str)
-            N_c       = num_atoms(f)
 
-            # Hd = Hf(compound) - sum_k(amt_k * N_k/N_c * Ef(phase_k))
+            # Hd = Hf(compound) - sum_k(amt_k * Ef(phase_k))
+            # amt_k are atom-fraction weights (sum to 1) — no N_k/N_c needed
             hd_dft = hullout[f].get("Hd")
             if hd_dft is None:
                 continue
@@ -226,15 +245,16 @@ def main():
             for amt_k, fk in products:
                 if fk not in ml_hf:
                     ok = False; break
-                N_k      = num_atoms(fk)
-                hd_ml_den += amt_k * N_k / N_c * ml_hf[fk]
+                N_k = 1 #num_atoms(fk)
+                N_c = 1 #num_atoms(f)
+                hd_ml_den += amt_k * N_k/N_c * ml_hf[fk]
             if not ok:
                 continue
             hd_ml = hd_ml_num - hd_ml_den
             hd_errors.append(hd_ml - hd_dft)
 
             # ξ
-            xi = interference_score(f, rxn_str, ml_hf, dft_hf)
+            xi = interference_score(f, rxn_str, ml_hf, dft_hf_all)
             if xi is not None:
                 xis.append(xi)
 
@@ -262,4 +282,7 @@ def main():
         for row in rows:
             w.writerow([row[0], row[1]] + [f"{v:.4f}" for v in row[2:]])
 
-    print(f"\nSaved → {out_pa
+    print(f"\nSaved → {out_path}")
+
+if __name__ == "__main__":
+    main()

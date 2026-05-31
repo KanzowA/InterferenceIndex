@@ -11,8 +11,8 @@ from setuptools import find_packages, setup, Command
 NAME = 'interference-index'
 DESCRIPTION = 'Interference index ξ: a scale-invariant metric for error cancellation in ML formation energy models.'
 URL = 'https://github.com/KanzowA/InterferenceIndex'
-EMAIL = ''
-AUTHOR = ''
+EMAIL = 'alexander.kanzow@stud.uni-goettingen.de'
+AUTHOR = 'Alexander Kanzow'
 REQUIRES_PYTHON = '>=3.9.0'
 VERSION = '1.0.0'
 

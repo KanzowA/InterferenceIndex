@@ -86,4 +86,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--fig", type=int, default=None,
                         help="Generate only this figure number (default: all)")
-   
+    args = parser.parse_args()
+    sys.exit(run(args.fig))

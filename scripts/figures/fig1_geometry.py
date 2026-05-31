@@ -10,7 +10,10 @@ Two panels:
 Colour scheme — edit the four COL_* variables and CMAP to restyle.
 """
 
+import os
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.colors import TwoSlopeNorm
@@ -25,8 +28,16 @@ COL_NULL    = '#FFFFFF'   # ξ = 1  null
 COL_ONES    = '#6B7280' # 1̂ arrow
 CMAP        = 'RdBu_r'
 
-# ── Global style ──────────────────────────────────────────────────────────────
-plt.rcParams.update({'font.family': 'sans-serif', 'font.size': 11,
+# ── Journal style (npj Computational Materials) ────────────────────────────────────────────
+# Source pt = target_print_pt × (fig_width / journal_col_width).
+# All text targets 7 pt (body) and 6 pt (minor) at 170 mm double-column.
+_JOURNAL_COL_W = 6.69          # 170 mm in inches
+_FIG_W         = 12.0          # this figure's width in inches
+_FS    = round(7.0 * _FIG_W / _JOURNAL_COL_W)   # → 13 pt  (body / axis labels)
+_FS_SM = round(6.0 * _FIG_W / _JOURNAL_COL_W)   # → 11 pt  (minor annotations)
+_FS_LEG, _FS_CB = _FS, _FS
+_FS_PANEL = 20   # panel labels a/b/c — fixed across all figures
+plt.rcParams.update({'font.family': 'sans-serif', 'font.size': _FS,
                      'axes.linewidth': 0.8})
 
 N    = 2
@@ -54,8 +65,8 @@ sm.set_array([])
 for ax_cb in (ax_cb1, ax_cb2):
     cb = fig.colorbar(sm, cax=ax_cb, orientation='horizontal',
                       ticks=[0, 1.0, R])
-    cb.ax.set_xticklabels(['0', '1', r'$\sqrt{2}$'], fontsize=10)
-    cb.set_label(r'$\xi$', fontsize=13, labelpad=3)
+    cb.ax.set_xticklabels(['0', '1', r'$\sqrt{2}$'], fontsize=_FS)
+    cb.set_label(r'$\xi$', fontsize=_FS_CB, labelpad=3)
     ax_cb.xaxis.set_ticks_position('top')
     ax_cb.xaxis.set_label_position('top')
     pos = ax_cb.get_position()
@@ -69,7 +80,7 @@ def draw_vec(ax, x1, y1, color, label, loff, c = 'black'):
     ann.arrow_patch.set_path_effects(
         [pe.withStroke(linewidth=4, foreground=c)])
     ax.text(x1 + loff[0], y1 + loff[1], label, color=color,
-            fontsize=10, fontweight='bold', zorder=8,
+            fontsize=_FS, fontweight='bold', zorder=8,
             path_effects=[pe.withStroke(linewidth=2.5, foreground=c)])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -88,12 +99,12 @@ ax1.pcolormesh(R1, R2, xi_map, cmap=CMAP, norm=norm,
 xl = np.linspace(-lim, lim, 2)
 
 # Line labels — positioned to avoid vectors
-ax1.text( -0.5,  -0.85, r'$\xi=\sqrt{2}$', color=COL_AMPLIFY, fontsize=9,
+ax1.text( -0.5,  -0.85, r'$\xi=\sqrt{2}$', color=COL_AMPLIFY, fontsize=_FS_SM,
           ha='center', fontweight='bold', path_effects=stroke_black)
 # ξ=1 label: upper-right corner, above r_C which sits on the x-axis
-ax1.text( 0.85,  0.15, r'$\xi=1$',        color=COL_NULL,    fontsize=9,
+ax1.text( 0.85,  0.15, r'$\xi=1$',        color=COL_NULL,    fontsize=_FS_SM,
           ha='center', fontweight='bold', path_effects=stroke_black)
-ax1.text( -0.5, 0.80, r'$\xi=0$',        color=COL_CANCEL,  fontsize=9,
+ax1.text( -0.5, 0.80, r'$\xi=0$',        color=COL_CANCEL,  fontsize=_FS_SM,
           ha='center', fontweight='bold', path_effects=stroke_black)
 
 
@@ -112,17 +123,18 @@ r_ann = 0.25
 ax1.plot(r_ann * np.cos(t_ann), r_ann * np.sin(t_ann), 'k-', lw=1.5, zorder=6)
 ax1.text(r_ann * 0.7 * np.cos(np.pi / 8),
          r_ann * 0.6 * np.sin(np.pi / 8),
-         r'$\theta$', fontsize=12, va='center', ha='center')
+         r'$\theta$', fontsize=_FS, va='center', ha='center')
 
 ax1.axvline(0.00, ymin=0.00, ymax=1.00, color = 'k', alpha = 0.3)
 ax1.axhline(0.00, xmin=0.00, xmax=1.00, color = 'k', alpha = 0.3)
 ax1.set_xlim(-lim, lim); ax1.set_ylim(-lim, lim)
-ax1.set_xlabel(r'$r_1$', fontsize=13); ax1.set_ylabel(r'$r_2$', fontsize=13)
+ax1.set_xlabel(r'$r_1$', fontsize=_FS, labelpad=5)
+ax1.set_ylabel(r'$r_2$', fontsize=_FS, labelpad=5)
 ax1.set_aspect('equal')
 
 # Panel label: outside, top-left
-ax1.text(-0.25, 1.25, 'a)', transform=ax1.transAxes,
-         fontsize=25, fontweight='bold', va='bottom', ha='left', clip_on=False)
+ax1.text(-0.22, 1.18, 'a', transform=ax1.transAxes,
+         fontsize=_FS_PANEL, fontweight='bold', va='bottom', ha='left', clip_on=False)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Panel b — coloured arc: direction of r̂ relative to 1̂ determines ξ
@@ -150,7 +162,7 @@ r_ann = 0.25
 ax2.plot(r_ann * np.cos(t_ann), r_ann * np.sin(t_ann), 'k-', lw=1.5, zorder=6)
 ax2.text(r_ann * 0.7 * np.cos(np.pi / 8),
          r_ann * 0.6 * np.sin(np.pi / 8),
-         r'$\theta$', fontsize=12, va='center', ha='center')
+         r'$\theta$', fontsize=_FS, va='center', ha='center')
 
 # Example vectors at rightful places: θ=0° (ξ=√2), θ=45° (ξ=1), θ=90° (ξ=0)
 examples_circ = [
@@ -174,15 +186,25 @@ ax2.set_xticks(tick_v); ax2.set_xticklabels(tick_l)
 ax2.set_yticks(tick_v); ax2.set_yticklabels(tick_l)
 ax2.set_xlim(-0.05 * R, R * 1.1)
 ax2.set_ylim(-0.05 * R, R * 1.1)
-ax2.set_xlabel(r'$\xi = \sqrt{N}\cos\theta$', fontsize=11)
-ax2.set_ylabel(r'$\eta = \sqrt{N}\sin\theta$',        fontsize=11)
+ax2.set_xlabel(r'$\xi = \sqrt{N}\cos\theta$', fontsize=_FS, labelpad=5)
+ax2.set_ylabel(r'$\eta = \sqrt{N}\sin\theta$', fontsize=_FS, labelpad=5)
 ax2.set_aspect('equal')
 
 # Panel label: outside, top-left
-ax2.text(-0.25, 1.25, 'b)', transform=ax2.transAxes,
-         fontsize=25, fontweight='bold', va='bottom', ha='left', clip_on=False)
+ax2.text(-0.22, 1.18, 'b', transform=ax2.transAxes,
+         fontsize=_FS_PANEL, fontweight='bold', va='bottom', ha='left', clip_on=False)
 
 # ── Save ─────────────────────────────────────────────────────────────────────
-plt.savefig('figures/figure1_geometry.png', dpi=300, bbox_inches='tight')
-print("Saved → figure1_geometry.png")
-plt.show()
+def main():
+    import argparse
+    _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", default=os.path.join(_REPO, "figures", "figure1_geometry.png"))
+    args = parser.parse_args()
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    plt.savefig(args.out, dpi=300, bbox_inches="tight")
+    print(f"Saved → {args.out}")
+
+
+if __name__ == "__main__":
+    main()

@@ -101,10 +101,8 @@ def is_element(formula):
 
 def num_atoms(formula):
     import re
-    counts = re.findall(r'[A-Z][a-z]?(\d+)', formula)
-    if not counts:
-        return 1
-    return sum(int(n) for n in counts)
+    tokens = re.findall(r'([A-Z][a-z]*)(\d*)', formula)
+    return sum(int(n) if n else 1 for el, n in tokens if el)
 
 
 def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error'):
@@ -126,7 +124,7 @@ def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error'):
         delta_k = ml_hf[formula_k] - dft_hf[formula_k] if mode == 'error' else ml_hf[formula_k]
         N_k = num_atoms(formula_k)
         c.append(amt_k * N_k * delta_k / N_c)
-
+                 
     if len(c) == 0:
         return None
 

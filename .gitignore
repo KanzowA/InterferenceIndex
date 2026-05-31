@@ -1,49 +1,48 @@
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 *.py[cod]
-*.egg
+__pycache__/
 *.egg-info/
 dist/
 build/
-__pycache__/
-.eggs/
 
-# Jupyter
-*-checkpoint.ipynb
-
-# OS / editor
+# ── OS / editor ───────────────────────────────────────────────────────────────
 .DS_Store
-*.DS_Store
 .idea/
+.vscode/
 *~
 
-# Package install artifacts
-lib/
-lib64/
-bin/
-var/
-sdist/
-develop-eggs/
-.installed.cfg
-parts/
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+*-checkpoint.ipynb
 
 # ── Project-specific ──────────────────────────────────────────────────────────
 
-# Trained model predictions — large files, distributed via Zenodo.
-# Generated locally by running: bash scripts/sweep.sh
+# Trained model predictions — gitignored, distributed via Zenodo.
 # Download from: https://doi.org/10.5281/zenodo.20468539
+# Regenerate locally: bash scripts/sweep.sh
 data/2026/ml/
 
-# Checkpoints written by sweep.sh stage-1 (iiLoss_save_*)
+# Stage-1 checkpoints written by sweep.sh (iiLoss_save_*)
 checkpoints/
 
 # Sweep logs
 logs/
 
-# Generated figures (regeneratable via scripts/generate_figures.py)
-# figures/ is tracked so pre-rendered PNGs ship with the repo.
-# Exclude only the root-level stray copy produced by interference_score.py:
-/interference_circles.png
-/score_vs_error.png
+# Working notes not intended for the public repo
+ZENODO_UPLOAD.md
+
+# Zenodo upload archive (created manually, not part of the repo)
+ml_predictions_2026.zip
+
+# Per-compound interference score CSVs — large (~77MB), regenerate with:
+#   python scripts/interference_score.py 2020
+#   python scripts/interference_score.py 2026
+# Summary CSVs (interference_summary_*.csv) are tracked — they're tiny and needed for fig6.
+results/2020/interference_scores_2020.csv
+results/2026/interference_scores_2026.csv
+
+# Stray figures generated in the root by interference_score.py
+interference_circles.png
+score_vs_error.png
 
 # Temporary training artefacts
 tmp*.json
