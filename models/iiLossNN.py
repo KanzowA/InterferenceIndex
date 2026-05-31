@@ -193,6 +193,7 @@ class iiLossNN(nn.Module):
         finetune_epochs = 200,    # epochs for fine-tuning
         use_pcgrad      = False,  # gradient surgery: project ξ² ⊥ MSE each step
     ):
+        super().__init__()
         self.target          = target
         self.lam             = lam
         self.eps             = eps

@@ -70,7 +70,7 @@ class _ModelDict(dict):
             try:
                 alpha = float(key.split("_", 2)[2])
                 return lambda target, a=alpha: HdLossNN(
-                    target, alpha=a,
+                    target, lam=a,
                     finetune_from=join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -84,7 +84,7 @@ class _ModelDict(dict):
             try:
                 alpha = float(key.rsplit("_", 1)[1])
                 return lambda target, a=alpha: HdLossNN(
-                    target, alpha=a,
+                    target, lam=a,
                     finetune_from=join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -98,7 +98,7 @@ class _ModelDict(dict):
         if key.startswith("HdLoss_"):
             try:
                 alpha = float(key.split("_", 1)[1])
-                return lambda target, a=alpha: HdLossNN(target, alpha=a)
+                return lambda target, a=alpha: HdLossNN(target, lam=a)
             except ValueError:
                 pass
         raise KeyError("Unknown model '{}'. Available: {}".format(
