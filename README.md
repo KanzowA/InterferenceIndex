@@ -86,11 +86,13 @@ python scripts/figures/fig5_gradient_fields.py
 
 ## The interference index
 
-For a decomposition reaction $A → Σ_i \omega_i P_k$, define the error vector **c** with components c_i = v_i · δ_i where δ_i = ΔHf^ML − ΔHf^DFT. The interference index is:
+For a decomposition reaction $A = Σ_i \nu_i \Delta_\mathrm{f} H_i$, define the error vector **c** with components $c_i = \nu_i · \delta_i$ where $\delta_i = \Delta_\mathrm{f} H_i^\mathrm{ML} − \Delta_\mathrm{f} H_i^\mathrm{DFT}$. The interference index is:
 
-ξ = |Σ c_i| / ‖**c**‖ = √N · |cos θ|
+\begin{equation*}
+\xi = \frac{\left|\sum_i c_i\right|}{\left|\left|\mathbf{c}\right|\right|} = \sqrt{N}\cdot \cos{\theta}
+\end{equation*}
 
-ξ → 0: errors cancel across the reaction (favourable)
-ξ → √N: errors align constructively (unfavourable)
+$\xi \rightarrow 0$: errors cancel across the reaction (favourable)
+$\xi \rightarrow \sqrt{N}$: errors align constructively (unfavourable)
 
 ξ is scale-in
