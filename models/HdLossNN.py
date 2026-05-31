@@ -41,7 +41,7 @@ import torch
 import torch.nn as nn
 
 from .iiLossNN import (
-    iiLossNN, _parse_rxn, MAX_RXN_SIZE
+    iiLossNN, _parse_rxn, MAX_RXN_SIZE, _num_atoms
 )
 
 
@@ -173,8 +173,13 @@ class HdLossNN(iiLossNN):
             rxn_str = entry.get('rxn', '')
             if not rxn_str:
                 continue
-            pairs = _parse_rxn(rxn_str, label_to_pos)
+            N_c   = _num_atoms(lbl)
+            pairs = _parse_rxn(rxn_str, label_to_pos, N_c)
+            # Prepend reactant with coefficient -1 so that
+            # Σ(weight_i · δ_i) == Hd_DFT − Hd_ML (matches evaluation)
+            pairs.insert(0, (label_to_pos[lbl], -1.0))
             if len(pairs) < 2:
+                # Only reactant, no non-elemental products → Hd undefined
                 continue
 
             idx_row   = [p[0] for p in pairs]

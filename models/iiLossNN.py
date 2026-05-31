@@ -47,6 +47,23 @@ from matminer.featurizers.composition import ElementFraction
 
 MAX_RXN_SIZE = 10
 
+
+# ---------------------------------------------------------------------------
+# Formula helpers (mirror interference_score.py — kept local to avoid
+# circular imports)
+# ---------------------------------------------------------------------------
+
+def _num_atoms(formula: str) -> int:
+    """Total atom count for a formula string, e.g. 'Ac1Ag3' → 4."""
+    tokens = re.findall(r'([A-Z][a-z]*)(\d*)', formula)
+    return sum(int(n) if n else 1 for el, n in tokens if el)
+
+
+def _is_element(formula: str) -> bool:
+    """True iff the formula contains only one distinct element symbol."""
+    symbols = re.findall(r'[A-Z][a-z]?', formula)
+    return len(set(symbols)) == 1
+
 # ---------------------------------------------------------------------------
 # Architecture
 # ---------------------------------------------------------------------------
@@ -254,8 +271,13 @@ class iiLossNN(nn.Module):
             rxn_str = entry.get('rxn', '')
             if not rxn_str:
                 continue
-            pairs = _parse_rxn(rxn_str, label_to_pos)
+            N_c   = _num_atoms(lbl)
+            pairs = _parse_rxn(rxn_str, label_to_pos, N_c)
+            # Prepend reactant with coefficient -1 so that
+            # Σ(weight_i · δ_i) == Hd_DFT − Hd_ML (matches evaluation)
+            pairs.insert(0, (label_to_pos[lbl], -1.0))
             if len(pairs) < 2:
+                # Only reactant, no non-elemental products → Hd undefined
                 continue
 
             idx_row   = [p[0] for p in pairs]
@@ -332,7 +354,11 @@ class iiLossNN(nn.Module):
         # For fine-tuning: model is pretrained, so refs are calibrated to
         # the converged solution — both terms start at 1.0 and stay balanced.
         mse_ref, xi2_ref = self._compute_refs(
-            X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
+            X_t, Y_t,
+            R_idx   if has_rxn else None,
+            R_coeff if has_rxn else None,
+            R_mask  if has_rxn else None,
+            has_rxn, dev,
         )
 
         # -- Training loop (full-batch) ------------------------------------
@@ -344,7 +370,11 @@ class iiLossNN(nn.Module):
                     and epoch > 0
                     and epoch % actual_renorm == 0):
                 mse_ref, xi2_ref = self._compute_refs(
-                    X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev
+                    X_t, Y_t,
+                    R_idx   if has_rxn else None,
+                    R_coeff if has_rxn else None,
+                    R_mask  if has_rxn else None,
+                    has_rxn, dev,
                 )
 
             lam_eff = effective_lam(epoch)
@@ -479,10 +509,19 @@ class iiLossNN(nn.Module):
 # Helper
 # ---------------------------------------------------------------------------
 
-def _parse_rxn(rxn_str, label_to_pos):
+def _parse_rxn(rxn_str, label_to_pos, N_c):
     """
-    Parse '0.6667_Ac + 0.3333_AcAg' into [(position, coeff), ...]
-    for compounds present in label_to_pos.
+    Parse the product side of a reaction string, e.g.
+    '0.6667_Ac + 0.3333_Ac1Ag3', into [(position, weight), ...].
+
+    Elements are skipped (Hf = 0 by definition, excluded in evaluation).
+    Coefficients are normalised to per-atom units matching interference_score.py:
+        weight = v_k * N_k / N_c
+    where v_k is the stoichiometric coefficient from the rxn_str,
+    N_k = atom count of product k, N_c = atom count of reactant compound.
+
+    Note: the reactant itself is NOT added here — callers must prepend it
+    with coefficient -1.0 so that sum(weights * deltas) == Hd_DFT - Hd_ML.
     """
     pairs = []
     for token in rxn_str.split('+'):
@@ -491,6 +530,9 @@ def _parse_rxn(rxn_str, label_to_pos):
         if m:
             coeff   = float(m.group(1))
             formula = m.group(2).strip()
+            if _is_element(formula):
+                continue                    # elements: Hf = 0, skip
             if formula in label_to_pos:
-                pairs.append((label_to_pos[formula], coeff))
+                N_k = _num_atoms(formula)
+                pairs.append((label_to_pos[formula], coeff * N_k / N_c))
     return pairs
