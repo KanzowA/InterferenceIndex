@@ -1,1 +1,1 @@
-model,n_xi,n_ed,Ef_MAE,Ef_RMSE,Ed_MAE,Ed_RMSE,rms_xi,median_xi
+model,n_xi,n_hd,Hf_MAE,Hf_RMSE,Hd_MAE,Hd_RMSE,rms_xi,median_xi

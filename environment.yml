@@ -12,7 +12,7 @@ dependencies:
   - prettytable
   - pip
   - pip:
-      - torch
+      - torch --index-url https://download.pytorch.org/whl/cu121  # CUDA 12.1; use cu118 for older GPUs, or just 'torch' for CPU-only
       - pymatgen
       - matminer
       - mp-api          # optional: only needed for download_mp_current.py
