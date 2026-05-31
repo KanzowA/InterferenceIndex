@@ -5,11 +5,11 @@ Evaluates model performance on the ABO₃ perovskite subset of the MP dataset.
 
 Identifies ABO₃ perovskites from the hullout file by formula, then computes
 Ef MAE, Ed MAE, and interference score ξ on that subset for every model
-found in ml_data/Ef/<split>/.
+found in data/<year>/ml/Hf/.
 
-Usage (from the TestStabilityMl directory):
+Usage (from the InterferenceIndex_clean directory):
     python perovskite_subset.py
-    python perovskite_subset.py allMP_2026 --hullout data/hullout_current.json
+    python perovskite_subset.py allMP_2026 --hullout data/2026/hullout_2026.json
 
 Output:
     perovskite_summary.csv  — per-model metrics on the ABO₃ subset
@@ -21,9 +21,7 @@ from collections import defaultdict
 # ── Paths ──────────────────────────────────────────────────────────────────────
 HERE      = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
-REPO_DIR  = os.path.join(REPO_ROOT, "mlstabilitytest")
-DATA_DIR = os.path.join(REPO_DIR, "mp_data", "data")
-HULLOUT  = os.path.join(DATA_DIR, "hullout.json")
+HULLOUT  = os.path.join(REPO_ROOT, "data", "2020", "hullout_2020.json")
 
 
 # ── Formula helpers ────────────────────────────────────────────────────────────
@@ -89,23 +87,23 @@ def num_atoms(formula: str) -> int:
     return sum(int(n) for n in counts) if counts else 1
 
 
-def interference_score(compound, rxn_str, ml_ef, dft_ef):
-    if compound not in ml_ef or compound not in dft_ef:
+def interference_score(compound, rxn_str, ml_hf, dft_hf):
+    if compound not in ml_hf or compound not in dft_hf:
         return None
     products = parse_rxn(rxn_str)
     N_c = num_atoms(compound)
     c   = []
 
     if not is_element(compound):
-        c.append(-(ml_ef[compound] - dft_ef[compound]))
+        c.append(-(ml_hf[compound] - dft_hf[compound]))
 
     for amt_k, fk in products:
         if is_element(fk):
             continue
-        if fk not in ml_ef or fk not in dft_ef:
+        if fk not in ml_hf or fk not in dft_hf:
             return None
         N_k = num_atoms(fk)
-        c.append(amt_k * N_k * (ml_ef[fk] - dft_ef[fk]) / N_c)
+        c.append(amt_k * N_k * (ml_hf[fk] - dft_hf[fk]) / N_c)
 
     if not c:
         return None
@@ -124,7 +122,8 @@ def load_json(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("split", nargs="?", default="allMP_2020")
+    parser.add_argument("split", nargs="?", default="2020",
+                        help="Data split: '2020' or '2026' (default: 2020)")
     parser.add_argument("--hullout", default=None)
     args = parser.parse_args()
 
@@ -135,7 +134,8 @@ def main():
             candidate = os.path.join(REPO_ROOT, candidate)
         hullout_path = candidate
 
-    ML_DIR = os.path.join(REPO_DIR, "ml_data", "Ef", args.split)
+    year = "2026" if "2026" in args.split else "2020"
+    ML_DIR = os.path.join(REPO_ROOT, "data", year, "ml", "Hf")
     print(f"Split   : {args.split}")
     print(f"Hullout : {hullout_path}")
     print(f"ML dir  : {ML_DIR}\n")
@@ -151,13 +151,13 @@ def main():
         f for f in perovskites
         if isinstance(hullout[f], dict)
         and "rxn"   in hullout[f]
-        and "Ef"    in hullout[f]
+        and "Hf"    in hullout[f]
         and not is_element(f)
     }
 
-    dft_ef = {f: hullout[f]["Ef"] for f in perov_with_rxn}
+    dft_hf = {f: hullout[f]["Hf"] for f in perov_with_rxn}
     print(f"ABO₃ perovskites in hullout : {len(perovskites)}")
-    print(f"  with reaction + Ef        : {len(perov_with_rxn)}\n")
+    print(f"  with reaction + Hf        : {len(perov_with_rxn)}\n")
 
     if not perov_with_rxn:
         print("No perovskites found — check formula parsing or hullout file.")
@@ -178,80 +178,80 @@ def main():
 
     # ── Compute metrics ────────────────────────────────────────────────────────
     rows = []
-    header = ["model", "n_perov", "Ef_MAE", "Ef_RMSE",
-              "Ed_MAE", "Ed_RMSE", "mean_xi", "median_xi"]
+    header = ["model", "n_perov", "Hf_MAE", "Hf_RMSE",
+              "Hd_MAE", "Hd_RMSE", "mean_xi", "median_xi"]
 
     for model in all_models:
         ml_path = os.path.join(ML_DIR, model, "ml_input.json")
-        ml_ef   = load_json(ml_path)
+        ml_hf   = load_json(ml_path)
 
-        # Ef MAE / RMSE on perovskite subset
-        ef_errors = []
+        # Hf MAE / RMSE on perovskite subset
+        hf_errors = []
         for f in perov_with_rxn:
-            if f in ml_ef and f in dft_ef:
-                ef_errors.append(ml_ef[f] - dft_ef[f])
+            if f in ml_hf and f in dft_hf:
+                hf_errors.append(ml_hf[f] - dft_hf[f])
 
-        if not ef_errors:
+        if not hf_errors:
             print(f"  [SKIP] {model}: no predictions for perovskite subset")
             continue
 
-        ef_mae  = sum(abs(e) for e in ef_errors) / len(ef_errors)
-        ef_rmse = math.sqrt(sum(e**2 for e in ef_errors) / len(ef_errors))
+        hf_mae  = sum(abs(e) for e in hf_errors) / len(hf_errors)
+        hf_rmse = math.sqrt(sum(e**2 for e in hf_errors) / len(hf_errors))
 
-        # Ed MAE / RMSE — reconstruct Ed from hullout reactions
-        ed_errors = []
+        # Hd MAE / RMSE — reconstruct Ed from hullout reactions
+        hd_errors = []
         xis       = []
         for f in perov_with_rxn:
-            if f not in ml_ef:
+            if f not in ml_hf:
                 continue
             rxn_str = hullout[f].get("rxn", "")
             if not rxn_str:
                 continue
 
-            # Ed_ML = sum of weighted ML Ef values in the reaction
+            # Hd_ML = sum of weighted ML Hf values in the reaction
             products  = parse_rxn(rxn_str)
             N_c       = num_atoms(f)
 
-            # Ed = Ef(compound) - sum_k(amt_k * N_k/N_c * Ef(phase_k))
-            ed_dft = hullout[f].get("Ed")
-            if ed_dft is None:
+            # Hd = Hf(compound) - sum_k(amt_k * N_k/N_c * Ef(phase_k))
+            hd_dft = hullout[f].get("Hd")
+            if hd_dft is None:
                 continue
 
             # ML Ed prediction
-            if f not in ml_ef:
+            if f not in ml_hf:
                 continue
-            ed_ml_num = ml_ef[f]
-            ed_ml_den = 0.0
+            hd_ml_num = ml_hf[f]
+            hd_ml_den = 0.0
             ok        = True
             for amt_k, fk in products:
-                if fk not in ml_ef:
+                if fk not in ml_hf:
                     ok = False; break
                 N_k      = num_atoms(fk)
-                ed_ml_den += amt_k * N_k / N_c * ml_ef[fk]
+                hd_ml_den += amt_k * N_k / N_c * ml_hf[fk]
             if not ok:
                 continue
-            ed_ml = ed_ml_num - ed_ml_den
-            ed_errors.append(ed_ml - ed_dft)
+            hd_ml = hd_ml_num - hd_ml_den
+            hd_errors.append(hd_ml - hd_dft)
 
             # ξ
-            xi = interference_score(f, rxn_str, ml_ef, dft_ef)
+            xi = interference_score(f, rxn_str, ml_hf, dft_hf)
             if xi is not None:
                 xis.append(xi)
 
         n = len(xis)
-        if not ed_errors or not xis:
+        if not hd_errors or not xis:
             print(f"  [SKIP] {model}: insufficient Ed/ξ data")
             continue
 
-        ed_mae   = sum(abs(e) for e in ed_errors) / len(ed_errors)
-        ed_rmse  = math.sqrt(sum(e**2 for e in ed_errors) / len(ed_errors))
+        hd_mae   = sum(abs(e) for e in hd_errors) / len(hd_errors)
+        hd_rmse  = math.sqrt(sum(e**2 for e in hd_errors) / len(hd_errors))
         mean_xi  = sum(xis) / n
         xis_s    = sorted(xis)
         med_xi   = xis_s[n // 2] if n % 2 else (xis_s[n//2-1] + xis_s[n//2]) / 2
 
-        rows.append([model, n, ef_mae, ef_rmse, ed_mae, ed_rmse, mean_xi, med_xi])
+        rows.append([model, n, hf_mae, hf_rmse, hd_mae, hd_rmse, mean_xi, med_xi])
         print(f"  {model:<30s}  n={n:5d}  "
-              f"Ef={ef_mae:.4f}  Ed={ed_mae:.4f}  "
+              f"Hf={hf_mae:.4f}  Hd={hd_mae:.4f}  "
               f"ξ_mean={mean_xi:.4f}  ξ_med={med_xi:.4f}")
 
     # ── Save CSV ───────────────────────────────────────────────────────────────
@@ -262,8 +262,4 @@ def main():
         for row in rows:
             w.writerow([row[0], row[1]] + [f"{v:.4f}" for v in row[2:]])
 
-    print(f"\nSaved → {out_path}")
-
-
-if __name__ == "__main__":
-    main()
+    print(f"\nSaved → {out_pa

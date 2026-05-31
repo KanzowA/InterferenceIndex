@@ -5,17 +5,17 @@ in the same format as the Bartel et al. 2020 dataset.
 
 Replicates Bartel's query criteria:
   - Nonelemental compounds only (Bartel: "85,014 unique nonelemental chemical formulas")
-  - Formation energy filter: Ef < 1 eV/atom
-  - Ground-state structure per formula (most negative Ef)
+  - Formation energy filter: Hf < 1 eV/atom
+  - Ground-state structure per formula (most negative Hf)
   - MP correction scheme applied automatically by the API
 
 Output format (same as mlstabilitytest hullout.json):
 {
   "formula": {
-    "Ef": float,        # formation energy per atom (eV/atom)
-    "Ed": float,        # decomposition energy per atom (eV/atom); <0 stable, >0 unstable
+    "Hf": float,        # formation energy per atom (eV/atom)
+    "Hd": float,        # decomposition energy per atom (eV/atom); <0 stable, >0 unstable
     "rxn": str,         # decomposition reaction string
-    "stability": bool   # True if on hull (Ed <= 0)
+    "stability": bool   # True if on hull (Hd <= 0)
   }, ...
 }
 
@@ -23,12 +23,12 @@ Modes
 -----
   fast (default)
       Uses mpr.summary.search() + mpr.thermo.search().
-      Ed sign and rxn string from MP's pre-computed ThermoDoc.
+      Hd sign and rxn string from MP's pre-computed ThermoDoc.
       Runtime: ~30-60 min.
 
   pymatgen
       Downloads ComputedEntry objects and rebuilds convex hulls via
-      pymatgen PhaseDiagram.  Exact Ed values, exact rxn strings.
+      pymatgen PhaseDiagram.  Exact Hd values, exact rxn strings.
       Matches Bartel's procedure most closely.
       Runtime: ~4-8 hours.
 
@@ -104,8 +104,8 @@ def parse_args():
                    help="Output JSON path (default: hullout_current.json)")
     p.add_argument("--mode", choices=["fast", "pymatgen"], default="fast",
                    help="'fast' uses MP pre-computed data; 'pymatgen' rebuilds hulls locally")
-    p.add_argument("--ef-cutoff", type=float, default=1.0,
-                   help="Formation-energy upper cutoff eV/atom (Bartel used 1.0)")
+    p.add_argument("--hf-cutoff", type=float, default=1.0,
+                   help="Formation-enthalpy upper cutoff eV/atom (Bartel used 1.0)")
     p.add_argument("--limit", type=int, default=None,
                    help="Limit entries for testing (default: no limit)")
     return p.parse_args()
@@ -115,14 +115,14 @@ def parse_args():
 # Fast mode: summary + thermo endpoints
 # ---------------------------------------------------------------------------
 
-def download_fast(api_key, ef_cutoff=1.0, limit=None):
+def download_fast(api_key, hf_cutoff=1.0, limit=None):
     """
     Two-step fast download:
-      1. mpr.summary.search() → get all ground-state Ef values
-      2. mpr.thermo.search()  → get pre-computed Ed, rxn strings, stability
+      1. mpr.summary.search() → get all ground-state Hf values
+      2. mpr.thermo.search()  → get pre-computed Hd, rxn strings, stability
 
     Deduplication: for multiple polymorphs of the same formula, keep
-    the entry with the most negative Ef (ground state), consistent with
+    the entry with the most negative Hf (ground state), consistent with
     Bartel's procedure.
     """
     try:
@@ -131,10 +131,10 @@ def download_fast(api_key, ef_cutoff=1.0, limit=None):
         raise ImportError("pip install mp-api")
 
     # ------------------------------------------------------------------
-    # Step 1: summary search — filtered by Ef < cutoff
-    #   Gives us: Ef, energy_above_hull, is_stable, material_id
+    # Step 1: summary search — filtered by Hf < cutoff
+    #   Gives us: Hf, energy_above_hull, is_stable, material_id
     # ------------------------------------------------------------------
-    print(f"[fast] Step 1/2: downloading summary data (Ef < {ef_cutoff} eV/atom)...")
+    print(f"[fast] Step 1/2: downloading summary data (Hf < {hf_cutoff} eV/atom)...")
     t0 = time.time()
 
     sum_fields = ["material_id", "formula_pretty", "formation_energy_per_atom",
@@ -142,7 +142,7 @@ def download_fast(api_key, ef_cutoff=1.0, limit=None):
 
     with MPRester(api_key) as mpr:
         summary_docs = mpr.materials.summary.search(
-            formation_energy=(-100, ef_cutoff),
+            formation_energy=(-100, hf_cutoff),
             fields=sum_fields,
             num_chunks=None,
         )
@@ -155,7 +155,7 @@ def download_fast(api_key, ef_cutoff=1.0, limit=None):
 
     # ------------------------------------------------------------------
     # Step 2: thermo search — NO filter (ThermoRester doesn't support Ef filter)
-    #   Gives us: decomposition_enthalpy (signed Ed), rxn string
+    #   Gives us: decomposition_enthalpy (signed Hd), rxn string
     #
     #   decomposition_enthalpy:
     #     < 0 → stable   (compound is lower energy than competing phases)
@@ -192,7 +192,7 @@ def download_fast(api_key, ef_cutoff=1.0, limit=None):
     # ------------------------------------------------------------------
     # Build hullout: deduplicate by formula, keep most-negative Ef
     # ------------------------------------------------------------------
-    print("[fast] Building hullout (deduplication by formula, ground-state Ef)...")
+    print("[fast] Building hullout (deduplication by formula, ground-state Hf)...")
 
     by_formula = defaultdict(list)
     for doc in summary_docs:
@@ -207,7 +207,7 @@ def download_fast(api_key, ef_cutoff=1.0, limit=None):
     n_no_thermo = 0
 
     for formula, docs in by_formula.items():
-        # Ground state = most negative Ef (Bartel: "used the most negative ΔHf")
+        # Ground state = most negative Hf (Bartel: "used the most negative ΔHf")
         gs = min(docs, key=lambda d: d.formation_energy_per_atom)
         Ef = gs.formation_energy_per_atom
 
@@ -229,8 +229,8 @@ def download_fast(api_key, ef_cutoff=1.0, limit=None):
             rxn = gs.chemsys or ""
 
         hullout[formula] = {
-            "Ef": Ef,
-            "Ed": Ed,
+            "Hf": Ef,
+            "Hd": Ed,
             "rxn": rxn,
             "stability": stable,
         }
@@ -248,7 +248,7 @@ def download_fast(api_key, ef_cutoff=1.0, limit=None):
 # Pymatgen mode: full convex hull reconstruction
 # ---------------------------------------------------------------------------
 
-def download_pymatgen(api_key, ef_cutoff=1.0, limit=None):
+def download_pymatgen(api_key, hf_cutoff=1.0, limit=None):
     """
     Full mode: one bulk download of all ComputedEntry objects, then builds
     all convex hulls locally using pymatgen PhaseDiagram.
@@ -372,7 +372,7 @@ def download_pymatgen(api_key, ef_cutoff=1.0, limit=None):
             except Exception:
                 continue
 
-            if Ef >= ef_cutoff:
+            if Ef >= hf_cutoff:
                 continue
 
             try:
@@ -394,14 +394,13 @@ def download_pymatgen(api_key, ef_cutoff=1.0, limit=None):
                          for comp, amt in decomp.items()]
             rxn = " + ".join(rxn_parts)
 
-            # Deduplication: keep most negative Ef per formula
-            if formula not in hullout or Ef < hullout[formula]["Ef"]:
+            # Deduplication: keep most negative Hf per formula
+            if formula not in hullout or Ef < hullout[formula]["Hf"]:
                 hullout[formula] = {
-                    "Ef": Ef,
-                    "Ed": Ed,
+                    "Hf": Ef,
+                    "Hd": Ed,
                     "rxn": rxn,
                     "stability": stable,
-                    "material_id": gs.material_id,
                 }
 
     n_stable = sum(1 for v in hullout.values() if v["stability"])
@@ -427,7 +426,7 @@ def main():
 
     print("=" * 60)
     print(f"Mode:        {args.mode}")
-    print(f"Ef cutoff:   < {args.ef_cutoff} eV/atom  (Bartel: 1.0)")
+    print(f"Ef cutoff:   < {args.hf_cutoff} eV/atom  (Bartel: 1.0)")
     print(f"Output:      {out_path}")
     if args.limit:
         print(f"Limit:       {args.limit} entries (TEST MODE)")
@@ -437,11 +436,11 @@ def main():
 
     if args.mode == "fast":
         hullout = download_fast(args.api_key,
-                                ef_cutoff=args.ef_cutoff,
+                                hf_cutoff=args.hf_cutoff,
                                 limit=args.limit)
     else:
         hullout = download_pymatgen(args.api_key,
-                                    ef_cutoff=args.ef_cutoff,
+                                    hf_cutoff=args.hf_cutoff,
                                     limit=args.limit)
 
     elapsed = (time.time() - t0) / 60
@@ -462,3 +461,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+                                                    

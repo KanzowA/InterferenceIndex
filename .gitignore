@@ -1,43 +1,49 @@
+# Python
 *.py[cod]
 *.egg
-*.egg-info
-dist
-build
-eggs
-.eggs/*
-parts
-bin
-var
-sdist
-develop-eggs
-.installed.cfg
-lib
-lib64
+*.egg-info/
+dist/
+build/
+__pycache__/
+.eggs/
+
+# Jupyter
 *-checkpoint.ipynb
+
+# OS / editor
 .DS_Store
-.idea
 *.DS_Store
+.idea/
 *~
-mlstabilitytest/ml_data/*/*/*/*hull*.json
-mlstabilitytest/change_dir_names.py
-mlstabilitytest/sub.sh
-mlstabilitytest/*log*
-*__pycache__*
-mlstabilitytest/apriori_stability.py
-mlstabilitytest/data/
-mlstabilitytest/training/learning/
-mlstabilitytest/ml_data/Ef/allMP/*/tmp*.json
-mlstabilitytest/ml_data/Ef/allMP/*/ml_input.json
-mlstabilitytest/ml_data/Ef/allMP_single/
-mlstabilitytest/ml_data/Ed/allMP/*/tmp*.json
-mlstabilitytest/ml_data/Ed/allMP/*/ml_input.json
-mlstabilitytest/ml_data/Ed/allMP_single/
 
-# Trained model predictions — large files (~150MB), not tracked in git.
-# Download from [Zenodo DOI] and place in mlstabilitytest/ml_data/Ef/allMP_current/
-mlstabilitytest/ml_data/Ef/allMP_current/
-mlstabilitytest/ml_data/Ef/allMP_current_finetune/
-mlstabilitytest/figures/
+# Package install artifacts
+lib/
+lib64/
+bin/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+parts/
 
-# Generated output files (regeneratable)
-# interference_scores.c
+# ── Project-specific ──────────────────────────────────────────────────────────
+
+# Trained model predictions — large files, distributed via Zenodo.
+# Generated locally by running: bash scripts/sweep.sh
+# Download from: https://doi.org/10.5281/zenodo.20468539
+data/2026/ml/
+
+# Checkpoints written by sweep.sh stage-1 (iiLoss_save_*)
+checkpoints/
+
+# Sweep logs
+logs/
+
+# Generated figures (regeneratable via scripts/generate_figures.py)
+# figures/ is tracked so pre-rendered PNGs ship with the repo.
+# Exclude only the root-level stray copy produced by interference_score.py:
+/interference_circles.png
+/score_vs_error.png
+
+# Temporary training artefacts
+tmp*.json

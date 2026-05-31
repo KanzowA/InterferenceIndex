@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Nov  6 11:02:04 2019
-
-@author: chrisbartel
-"""
 
 import io
 import os
@@ -13,20 +8,27 @@ from shutil import rmtree
 
 from setuptools import find_packages, setup, Command
 
-NAME = 'mlstabilitytest'
-DESCRIPTION = 'Evaluate how well machine-learned formation energies predict stability.'
-URL = 'https://github.com/CJBartel/TestStabilityML'
-EMAIL = 'bartel.chrisj@gmail.com'
-AUTHOR = 'Chris Bartel'
-REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.2.0'
+NAME = 'interference-index'
+DESCRIPTION = 'Interference index ξ: a scale-invariant metric for error cancellation in ML formation energy models.'
+URL = 'https://github.com/KanzowA/InterferenceIndex'
+EMAIL = ''
+AUTHOR = ''
+REQUIRES_PYTHON = '>=3.9.0'
+VERSION = '1.0.0'
 
-REQUIRED = ['numpy',
-            'scipy',
-            'scikit-learn']
-EXTRAS = {'plotting' : ['prettytable',
-                         'matplotlib'],
-          'training' : ['pandas']}
+REQUIRED = [
+    'numpy',
+    'scipy',
+    'scikit-learn',
+    'pandas',
+    'torch',
+    'pymatgen',
+    'matminer',
+]
+EXTRAS = {
+    'plotting': ['matplotlib', 'prettytable'],
+    'download': ['mp-api'],
+}
 here = os.path.abspath(os.path.dirname(__file__))
 try:
     with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:

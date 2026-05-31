@@ -1,5 +1,19 @@
-recursive-include mlstabilitytest/mp_data/data *.json
-recursive-include mlstabilitytest/mp_data/data *.tar.gz
-recursive-include mlstabilitytest/mp_data/ *.py
-recursive-include mlstabilitytest/ml_data/ *.json
 include README.md
+include LICENSE.txt
+include environment.yml
+include CITATIONS.md
+
+# 2020 hull data and pre-computed baseline predictions (tracked in git)
+recursive-include data/2020 *.json
+
+# 2026 hull data (tracked; ml/ predictions are gitignored — distributed via Zenodo)
+include data/2026/hullout_2026.json
+
+# Pre-computed interference scores for all paper results
+recursive-include results *.csv
+
+# Model source files
+recursive-include models *.py
+
+# Scripts
+recursive-include scripts *.py *.sh

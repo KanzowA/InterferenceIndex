@@ -42,20 +42,18 @@ import csv
 from collections import defaultdict
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-HERE      = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
-REPO_DIR  = os.path.join(REPO_ROOT, "mlstabilitytest")
-DATA_DIR = os.path.join(REPO_DIR, "mp_data", "data")
 
-HULLOUT = os.path.join(DATA_DIR, "hullout.json")
+DATA_ROOT = os.path.join(REPO_ROOT, "data")
 
-# Automatic hullout selection per split — can be overridden with --hullout
 HULLOUT_MAP = {
-    "allMP_2026":           "data/hullout_current.json",
-    "allMP_2026_finetune":  "data/hullout_current.json",
-    "allMP_2026_single":    "data/hullout_current.json",
+    "2020": os.path.join(DATA_ROOT, "2020", "hullout_2020.json"),
+    "2026": os.path.join(DATA_ROOT, "2026", "hullout_2026.json"),
+    "2026_single": os.path.join(DATA_ROOT, "2026", "hullout_2026.json"),
 }
-EF_DFT  = os.path.join(DATA_DIR, "Ef.json")
+
+HF_DFT = os.path.join(DATA_ROOT, "2020", "Hf.json")
 
 # Base Bartel-et-al. models (fixed order)
 MODELS_BASE = ["ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet",
@@ -109,30 +107,30 @@ def num_atoms(formula):
     return sum(int(n) for n in counts)
 
 
-def interference_score(compound, rxn_str, ml_ef, dft_ef, mode='error'):
+def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error'):
     products = parse_rxn(rxn_str)
     N_c = num_atoms(compound)
     c = []
 
-    if compound not in ml_ef or compound not in dft_ef:
+    if compound not in ml_hf or compound not in dft_hf:
         return None
     if not is_element(compound):
-        delta_c = ml_ef[compound] - dft_ef[compound] if mode == 'error' else ml_ef[compound]
+        delta_c = ml_hf[compound] - dft_hf[compound] if mode == 'error' else ml_hf[compound]
         c.append(-delta_c)
 
     for amt_k, formula_k in products:
         if is_element(formula_k):
             continue
-        if formula_k not in ml_ef or formula_k not in dft_ef:
+        if formula_k not in ml_hf or formula_k not in dft_hf:
             return None
-        delta_k = ml_ef[formula_k] - dft_ef[formula_k] if mode == 'error' else ml_ef[formula_k]
+        delta_k = ml_hf[formula_k] - dft_hf[formula_k] if mode == 'error' else ml_hf[formula_k]
         N_k = num_atoms(formula_k)
         c.append(amt_k * N_k * delta_k / N_c)
 
     if len(c) == 0:
         return None
 
-    signed_sum  = sum(c)           # = Ed_DFT - Ed_ML  (for mode='error')
+    signed_sum  = sum(c)           # = Hd_DFT - Hd_ML  (for mode='error')
     numerator   = abs(signed_sum)
     denominator = math.sqrt(sum(x**2 for x in c))
 
@@ -142,30 +140,30 @@ def interference_score(compound, rxn_str, ml_ef, dft_ef, mode='error'):
     return numerator / denominator, len(c), signed_sum
 
 
-def compute_mae_rmse(ml_ef, dft_ef, reference_compounds=None):
+def compute_mae_rmse(ml_hf, dft_hf, reference_compounds=None):
     """MAE and RMSE over a defined reference set.
 
     Parameters
     ----------
-    ml_ef : dict  {formula: predicted_Ef}
-    dft_ef : dict {formula: dft_Ef}
+    ml_hf : dict  {formula: predicted_Hf}
+    dft_hf : dict {formula: dft_Hf}
     reference_compounds : iterable, optional
         The full set of compounds over which MAE is defined.
         If given, the denominator is len(reference_compounds) and compounds
-        missing from ml_ef are counted as errors of NaN (excluded from sum
+        missing from ml_hf are counted as errors of NaN (excluded from sum
         but the denominator reflects the full set size).
-        If None, iterates over ml_ef keys (legacy behaviour).
+        If None, iterates over ml_hf keys (legacy behaviour).
     """
     errors = []
     n_missing = 0
-    compounds = reference_compounds if reference_compounds is not None else ml_ef.keys()
+    compounds = reference_compounds if reference_compounds is not None else ml_hf.keys()
     for formula in compounds:
-        if formula not in dft_ef:
+        if formula not in dft_hf:
             continue
-        if formula not in ml_ef:
+        if formula not in ml_hf:
             n_missing += 1
             continue
-        errors.append(ml_ef[formula] - dft_ef[formula])
+        errors.append(ml_hf[formula] - dft_hf[formula])
     if n_missing:
         print(f"    [MAE] {n_missing} compounds in reference set have no ML prediction — excluded from MAE")
     if not errors:
@@ -199,7 +197,7 @@ def plot_interference_circles(results, models):
         return
 
     # Grid layout: up to 4 columns
-    n_cols = min(n_models, 3)
+    n_cols = min(n_models, 4)
     n_rows = math.ceil(n_models / n_cols)
 
     # Shared geometry: common lim across all models so panels are comparable
@@ -235,7 +233,7 @@ def plot_interference_circles(results, models):
         rows   = by_model[model_name]
         Ns     = np.array([r["N"]         for r in rows])
         xis    = np.array([r["xi_err"]    for r in rows])
-        deltas = np.array([r["delta_err"] for r in rows])
+        deltas = np.array([r["eta_err"] for r in rows])
 
         # Concentric arcs + N labels
         for N_val in sorted(set(Ns)):
@@ -335,9 +333,11 @@ def plot_interference_circles(results, models):
     cbar.set_ticks([0, 1, math.sqrt(10)])
     cbar.set_ticklabels(['0', '1', r'$\sqrt{10}$'])
 
-    plt.savefig("interference_circles.png", dpi=150, bbox_inches="tight")
+    out_fig = os.path.join(REPO_ROOT, "figures", "interference_circles.png")
+    os.makedirs(os.path.dirname(out_fig), exist_ok=True)
+    plt.savefig(out_fig, dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print("Figure saved to interference_circles.png")
+    print(f"Figure saved to {out_fig}")
 
 
 def plot_score_vs_error(results, hullout):
@@ -363,7 +363,7 @@ def plot_score_vs_error(results, hullout):
         rows  = by_model[model_name]
         color = model_colors.get(model_name, "gray")
         xis = np.array([r["xi_err"] for r in rows])
-        ed_dft = np.array([r["Ed_DFT"]    for r in rows])
+        ed_dft = np.array([r["Hd_DFT"]    for r in rows])
         stable = np.array([r["stability"]  for r in rows])
 
         ax = axes[row_idx][0]
@@ -394,9 +394,11 @@ def plot_score_vs_error(results, hullout):
 
     plt.suptitle("Interference score vs. decomposition energy", fontsize=14, y=1.001)
     plt.tight_layout()
-    plt.savefig("score_vs_error.png", dpi=150, bbox_inches="tight")
+    out_fig = os.path.join(REPO_ROOT, "figures", "score_vs_error.png")
+    os.makedirs(os.path.dirname(out_fig), exist_ok=True)
+    plt.savefig(out_fig, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print("Figure saved to score_vs_error.png")
+    print(f"Figure saved to {out_fig}")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -405,31 +407,27 @@ def main():
     # ── Parse arguments ───────────────────────────────────────────────────────
     import argparse
     parser = argparse.ArgumentParser(description="Compute interference scores for ML models.")
-    parser.add_argument("split", nargs="?", default="allMP_2020",
-                        help="Data split to evaluate (default: allMP)")
+    parser.add_argument("split", nargs="?", default="2020",
+                        help="Data split to evaluate (default: 2020).")
     parser.add_argument("--hullout", default=None,
-                        help="Path to hullout JSON file (default: mp_data/data/hullout.json). "
+                        help="Path to hullout JSON file (default: data/2020/hullout_2020.json). "
                              "Use hullout_current.json for 2026 MP data.")
     args = parser.parse_args()
     split = args.split
 
-    ML_DIR = os.path.join(REPO_DIR, "ml_data", "Ef", split)
+    if split.startswith("2020"):
+        ML_DIR = os.path.join(DATA_ROOT, "2020", "ml", "Hf")
+    elif split.startswith("2026"):
+        ML_DIR = os.path.join(DATA_ROOT, "2026", "ml", "Hf")
+    else:
+        raise ValueError(f"Unknown split: {split}")
     print(f"Using split: {split}  →  {ML_DIR}\n")
 
     # Select hullout: auto-map by split, then override with --hullout if given
-    global HULLOUT
-    if split in HULLOUT_MAP:
-        HULLOUT = os.path.join(HERE, HULLOUT_MAP[split])
-        print(f"  [hullout] auto-selected for split '{split}': {HULLOUT}")
-    if args.hullout:
-        candidate = args.hullout
-        if not os.path.isabs(candidate):
-            candidate = os.path.join(REPO_ROOT, candidate)
-        HULLOUT = candidate
-        print(f"  [hullout] overridden by --hullout: {HULLOUT}")
+    HULLOUT = HULLOUT_MAP[split]
     print(f"Using hullout: {HULLOUT}\n")
 
-    # ── Auto-detect iiLoss_* and EdLoss_* variants ────────────────────────────
+    # ── Auto-detect iiLoss_* and HdLoss_* variants ────────────────────────────
     global MODELS
 
     def _detect_variants(prefix, ml_dir):
@@ -446,22 +444,22 @@ def main():
         return variants
 
     ii_variants = _detect_variants("iiLoss_", ML_DIR)
-    ed_variants = _detect_variants("EdLoss_", ML_DIR)
+    ed_variants = _detect_variants("HdLoss_", ML_DIR)
 
     MODELS = list(MODELS_BASE) + ii_variants + ed_variants
 
     if ii_variants:
         print(f"Auto-detected iiLoss variants: {ii_variants}")
     if ed_variants:
-        print(f"Auto-detected EdLoss variants: {ed_variants}")
+        print(f"Auto-detected HdLoss variants: {ed_variants}")
     if not ii_variants and not ed_variants:
-        print("No iiLoss_* or EdLoss_* variants found in ml_data folder.")
+        print("No iiLoss_* or HdLoss_* variants found in ml_data folder.")
 
     print("Loading DFT reference data …")
     hullout = load_json(HULLOUT)
 
     # Full DFT reference (85,014): used for Ef MAE — includes elements (Ef=0)
-    dft_ef_all = {f: v["Ef"] for f, v in hullout.items() if isinstance(v, dict) and "Ef" in v}
+    dft_hf_all = {f: v["Hf"] for f, v in hullout.items() if isinstance(v, dict) and "Hf" in v}
 
     # Non-elemental compounds with a reaction string: used for interference scoring
     valid_compounds = [
@@ -469,8 +467,8 @@ def main():
         if isinstance(v, dict) and "rxn" in v and not is_element(f)
     ]
     # Ef reference restricted to valid_compounds (for interference score internals)
-    dft_ef = {f: hullout[f]["Ef"] for f in valid_compounds}
-    print(f"  {len(dft_ef_all)} total compounds in hullout (MAE reference)")
+    dft_hf = {f: hullout[f]["Hf"] for f in valid_compounds}
+    print(f"  {len(dft_hf_all)} total compounds in hullout (MAE reference)")
     print(f"  {len(valid_compounds)} non-elemental compounds for interference scoring\n")
 
     results = []
@@ -484,20 +482,20 @@ def main():
             continue
 
         print(f"Processing {model} …")
-        ml_ef = load_json(ml_input_path)
+        ml_hf = load_json(ml_input_path)
 
         # ── MAE / RMSE over all 85,014 compounds in hullout ──────────────
-        mae, rmse = compute_mae_rmse(ml_ef, dft_ef_all, reference_compounds=list(dft_ef_all.keys()))
+        mae, rmse = compute_mae_rmse(ml_hf, dft_hf_all, reference_compounds=list(dft_hf_all.keys()))
 
         # ── Per-compound ξ scores and Ed errors ───────────────────────────
         scores    = []
-        ed_errors = []   # Ed_ML - Ed_DFT per compound (includes N=1)
+        hd_errors = []   # Hd_ML - Hd_DFT per compound (includes N=1)
         n_ok, n_skip = 0, 0
 
         for compound in valid_compounds:
             entry   = hullout[compound]
             rxn_str = entry["rxn"]
-            result_err = interference_score(compound, rxn_str, ml_ef, dft_ef, mode='error')
+            result_err = interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error')
 
             if result_err is None:
                 n_skip += 1
@@ -506,27 +504,27 @@ def main():
             xi_err, N, signed_sum = result_err
 
             # Ed MAE: include ALL compounds (N=1 and above)
-            # Ed_ML - Ed_DFT = -signed_sum  (signed_sum = Ed_DFT - Ed_ML)
-            ed_err = -signed_sum
-            ed_errors.append(ed_err)
+            # Hd_ML - Hd_DFT = -signed_sum  (signed_sum = Hd_DFT - Hd_ML)
+            hd_err = -signed_sum
+            hd_errors.append(hd_err)
 
             # xi: exclude single-participant reactions (N=1 is geometrically undefined)
             if N == 1:
                 n_skip += 1
                 continue
 
-            result_ml = interference_score(compound, rxn_str, ml_ef, dft_ef, mode='ml')
+            result_ml = interference_score(compound, rxn_str, ml_hf, dft_hf, mode='ml')
             if result_ml is None:
                 n_skip += 1
                 continue
 
             sqrt_N    = math.sqrt(N)
             theta_err = math.acos(min(xi_err / sqrt_N, 1.0))
-            delta_err = sqrt_N * math.sin(theta_err)
+            eta_err = sqrt_N * math.sin(theta_err)
 
             xi_ml    = result_ml[0]
             theta_ml = math.acos(min(xi_ml / sqrt_N, 1.0))
-            delta_ml = sqrt_N * math.sin(theta_ml)
+            eta_ml = sqrt_N * math.sin(theta_ml)
 
             n_ok += 1
             scores.append(xi_err)
@@ -534,36 +532,36 @@ def main():
                 "model":     model,
                 "compound":  compound,
                 "stability": entry["stability"],
-                "Ef_DFT":    entry["Ef"],
-                "Ed_DFT":    entry["Ed"],
-                "Ed_err":    round(ed_err, 6),
+                "Hf_DFT":    entry["Hf"],
+                "Hd_DFT":    entry["Hd"],
+                "Hd_err":    round(hd_err, 6),
                 "xi_err":    round(xi_err, 6),
-                "delta_err": round(delta_err, 6),
+                "eta_err":   round(eta_err, 6),
                 "theta_err": round(math.degrees(theta_err), 4),
                 "xi_ml":     round(xi_ml, 6),
-                "delta_ml":  round(delta_ml, 6),
+                "eta_ml":    round(eta_ml, 6),
                 "theta_ml":  round(math.degrees(theta_ml), 4),
                 "N":         N,
                 "sqrt_N":    round(sqrt_N, 4),
             })
 
         # Ed MAE / RMSE over all compounds with reactions (including N=1)
-        ed_mae  = sum(abs(e) for e in ed_errors) / len(ed_errors) if ed_errors else float('nan')
-        ed_rmse = math.sqrt(sum(e**2 for e in ed_errors) / len(ed_errors)) if ed_errors else float('nan')
+        hd_mae  = sum(abs(e) for e in hd_errors) / len(hd_errors) if hd_errors else float('nan')
+        hd_rmse = math.sqrt(sum(e**2 for e in hd_errors) / len(hd_errors)) if hd_errors else float('nan')
 
-        print(f"  scored {n_ok} for xi  |  {len(ed_errors)} for Ed MAE  |  skipped {n_skip}")
+        print(f"  scored {n_ok} for xi  |  {len(hd_errors)} for Hd MAE  |  skipped {n_skip}")
         summary[model] = {"scores": scores, "mae": mae, "rmse": rmse,
-                          "ed_mae": ed_mae, "ed_rmse": ed_rmse,
-                          "n": n_ok, "n_ed": len(ed_errors)}
+                          "hd_mae": hd_mae, "hd_rmse": hd_rmse,
+                          "n": n_ok, "n_hd": len(hd_errors)}
 
     # ── Write per-compound CSV ─────────────────────────────────────────────────
-    year = "2026" if split.startswith("allMP_2026") else "2020"
+    year = "2020" if split.startswith("2020") else "2026"
     out_dir = os.path.join(REPO_ROOT, "results", year)
     os.makedirs(out_dir, exist_ok=True)
     out_csv = os.path.join(out_dir, f"interference_scores_{year}.csv")
-    fieldnames = ["model", "compound", "stability", "Ef_DFT", "Ed_DFT", "Ed_err",
-                  "xi_err",   "delta_err", "theta_err",
-                  "xi_ml",    "delta_ml",  "theta_ml",
+    fieldnames = ["model", "compound", "stability", "Hf_DFT", "Hd_DFT", "Hd_err",
+                  "xi_err",   "eta_err", "theta_err",
+                  "xi_ml",    "eta_ml",  "theta_ml",
                   "N", "sqrt_N"]
     with open(out_csv, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
@@ -575,18 +573,18 @@ def main():
     sum_csv = os.path.join(out_dir, f"interference_summary_{year}.csv")
     with open(sum_csv, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["model", "n_xi", "n_ed", "Ef_MAE", "Ef_RMSE",
-                    "Ed_MAE", "Ed_RMSE", "rms_xi", "median_xi"])
+        w.writerow(["model", "n_xi", "n_hd", "Hf_MAE", "Hf_RMSE",
+                    "Hd_MAE", "Hd_RMSE", "rms_xi", "median_xi"])
         for model, s in summary.items():
             sc      = sorted(s["scores"])
             n       = len(sc)
             rms_xi  = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
             med_xi  = sc[n // 2] if n else float('nan')
-            w.writerow([model, s["n"], s["n_ed"],
+            w.writerow([model, s["n"], s["n_hd"],
                         round(s["mae"],     4),
                         round(s["rmse"],    4),
-                        round(s["ed_mae"],  4),
-                        round(s["ed_rmse"], 4),
+                        round(s["hd_mae"],  4),
+                        round(s["hd_rmse"], 4),
                         round(rms_xi,       4),
                         round(med_xi,       4)])
     print(f"Summary written to              {sum_csv}")
@@ -610,14 +608,14 @@ def main():
             model, s["n"],
             f"{s['mae']:.4f}",
             f"{s['rmse']:.4f}",
-            f"{s['ed_mae']:.4f}",
-            f"{s['ed_rmse']:.4f}",
+            f"{s['hd_mae']:.4f}",
+            f"{s['hd_rmse']:.4f}",
             f"{rms_xi:.4f}",
             f"{med_xi:.4f}",
         ))
     print(sep)
 
-    plot_interference_circles(results, ['ElFrac', 'Meredig', 'Magpie', 'AutoMat', 'ElemNet', 'Roost'])
+    plot_interference_circles(results, ['ElFrac', 'Meredig', 'Magpie', 'AutoMat', 'ElemNet', 'Roost', 'CGCNN'])
 
 
 if __name__ == "__main__":

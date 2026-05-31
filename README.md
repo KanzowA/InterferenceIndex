@@ -13,21 +13,31 @@ It extends the benchmark framework of [Bartel et al. (2020)](https://www.nature.
 ## Repository structure
 
 ```
-├── data/                        # Materials Project dataset (2026 snapshot)
+├── data/                        # Materials Project hull data
+│   ├── 2020/                    # Bartel et al. 2020 MP snapshot
+│   └── 2026/                    # Current MP snapshot
+│                                # 2026 ML predictions: https://doi.org/10.5281/zenodo.20468539
 ├── results/                     # Pre-computed interference scores
-├── figures/                     # Paper figures (PDF/PNG)
-├── scripts/                     # Figure generation scripts
-├── sweeps/                      # Cluster training sweep scripts
-├── interference_score.py        # Compute ξ for any trained model
-├── perovskite_subset.py         # Subset analysis on ABO₃ perovskites
-├── download_mp_current.py       # Re-fetch MP data (requires API key)
-└── mlstabilitytest/             # Core package
+│   ├── 2020/                    # interference_scores_2020.csv, interference_summary_2020.csv
+│   └── 2026/                    # interference_scores_2026.csv, interference_summary_2026.csv
+├── figures/                     # Paper figures (PNG outputs)
+├── models/                      # Model definitions
+│   ├── iiLossNN.py              # iiLoss model (ξ²-regularised)
+│   └── HdLossNN.py              # HdLoss model (Hd²-regularised)
+└── scripts/                     # All runnable scripts
     ├── train_models.py          # Entry point for training
-    └── training/
-        ├── iiLossNN.py          # iiLoss model (ξ²-regularised)
-        ├── EdLossNN.py          # EdLoss model (Ed²-regularised)
-        ├── CHGNetModel.py       # CHGNet wrapper (pre-trained)
-        └── process.py          # Data splits and model registry
+    ├── process.py               # Data splits and model registry
+    ├── interference_score.py    # Compute ξ for any trained model
+    ├── generate_figures.py      # Reproduce all paper figures
+    ├── sweep.sh                 # iiLoss / HdLoss hyperparameter sweeps
+    ├── perovskite_subset.py     # Subset analysis on ABO₃ perovskites
+    ├── download_mp_current.py   # Re-fetch MP data (requires API key)
+    └── figures/                 # Individual figure scripts
+        ├── fig1_geometry.py
+        ├── fig2_circles.py
+        ├── fig3_model_comparison.py
+        ├── fig5_gradient_fields.py
+        └── fig6_lambda_sweep.py
 ```
 
 ---
@@ -49,16 +59,16 @@ pip install -e .
 **1. Train models** (GPU recommend, but also works on CPU; runs 5-fold CV on the 2026 MP dataset):
 ```bash
 # iiLoss sweep
-bash sweeps/sweep_iiLoss.sh
+bash scripts/sweep.sh iiLoss
 
-# EdLoss + PCGrad sweep
-bash sweeps/sweep_EdLoss_pcgrad.sh
+# HdLoss + PCGrad sweep
+bash scripts/sweep.sh HdLoss pcgrad
 ```
 
 **2. Compute interference scores:**
 ```bash
-python scripts/interference_score.py allMP_2026
-python scripts/interference_score.py allMP_2020
+python scripts/interference_score.py 2026
+python scripts/interference_score.py 2020
 ```
 
 Results are written to `results/2026/` and `results/2020/` respectively.
@@ -66,9 +76,9 @@ Pre-computed results for all models in the paper are already provided there.
 
 **3. Reproduce figures:**
 ```bash
-python figures/generate_figures.py        # all figures
-python scripts/fig6_lambda_sweep.py --csv results/2026/interference_summary_2026.csv
-python scripts/fig5_gradient_fields.py
+python scripts/generate_figures.py        # all figures
+python scripts/figures/fig6_lambda_sweep.py --csv results/2026/interference_summary_2026.csv
+python scripts/figures/fig5_gradient_fields.py
 # etc.
 ```
 
@@ -76,36 +86,11 @@ python scripts/fig5_gradient_fields.py
 
 ## The interference index
 
-For a decomposition reaction X → Σ_k v_k P_k, define the error vector **c** with components c_i = v_i · δ_i where δ_i = ΔH_f^ML - ΔH_f^DFT. The interference index is:
+For a decomposition reaction X → Σ_k v_k P_k, define the error vector **c** with components c_i = v_i · δ_i where δ_i = ΔHf^ML − ΔHf^DFT. The interference index is:
 
 ξ = |Σ c_i| / ‖**c**‖ = √N · |cos θ|
 
 ξ → 0: errors cancel across the reaction (favourable)
 ξ → √N: errors align constructively (unfavourable)
 
-ξ is scale-invariant and invariant to systematic biases (since reaction weights sum to zero), making it a more informative diagnostic than decomposition energy MAE alone.
-
----
-
-## Citation
-
-If you use this repository, please cite both this work and Bartel et al.:
-
-```bibtex
-@article{[key],
-  title   = {[Title]},
-  author  = {[Authors]},
-  journal = {npj Computational Materials},
-  year    = {2025},
-  doi     = {[DOI]}
-}
-
-@article{bartel2020,
-  title   = {A critical examination of compound stability predictions from machine-learned formation energies},
-  author  = {Bartel, C. and Trewartha, A. and Wang, Q. and Dunn, A. and Jain, A. and Ceder, G.},
-  journal = {npj Computational Materials},
-  volume  = {6},
-  pages   = {97},
-  year    = {2020}
-}
-```
+ξ is scale-in
