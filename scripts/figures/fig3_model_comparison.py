@@ -107,13 +107,14 @@ def plot(by_model: dict, models: list, out_path: str):
             R = math.sqrt(N_val)
             ax.plot(R * np.cos(arc_theta), R * np.sin(arc_theta),
                     color="lightgray", lw=1.0, zorder=0)
-            ax.text((R + 0.10) * np.cos(0.38), (R + 0.10) * np.sin(0.38),
-                    f"{N_val}", color="gray", fontsize=_FS_SM * 0.5,
+            ax.text(R * np.cos(0.24) + 0.01 - R * 0.01,
+                    R * np.sin(0.24),
+                    f"{N_val}", color="gray", fontsize=_FS_SM * 0.6,
                     va="top", ha="left", rotation=-80)
 
         # Scatter
         ax.scatter(xis, deltas, c=xis, cmap=_CMAP, norm=norm,
-                   s=7, alpha=0.45, zorder=3)
+                   s=10, alpha=0.35, zorder=3)
 
         # Per-N RMS-ξ diamond
         for N_val in sorted(set(Ns)):

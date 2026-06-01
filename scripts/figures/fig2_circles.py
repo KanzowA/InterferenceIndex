@@ -80,9 +80,9 @@ def draw_panel(ax, key):
         R = np.sqrt(N)
         ax.plot(R * np.cos(arc_theta), R * np.sin(arc_theta),
                 color='lightgray', lw=1.0, zorder=0)
-        ax.text(R * np.cos(0.24) + 0.04 - R * 0.003,
+        ax.text(R * np.cos(0.24) + 0.01 - R * 0.003,
                 R * np.sin(0.24),
-                f'N={N}', color='gray', fontsize=_FS_SM,
+                f'N={N}', color='gray', fontsize=_FS_SM + 1,
                 va='top', ha='left', rotation=-80)
 
     # Scatter coloured by xi
@@ -93,7 +93,7 @@ def draw_panel(ax, key):
         all_x.extend(xi)
         all_y.extend(delta)
     ax.scatter(all_x, all_y, c=all_xi, cmap=CMAP, norm=norm,
-               s=7, alpha=0.5, zorder=3)
+               s=10, alpha=0.35, zorder=3)
 
     # Per-N RMS-xi diamonds — computed from the sampled data
     for N in N_VALS:

@@ -14,6 +14,7 @@ import re
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from matplotlib.patches import Patch
 
 # ── Journal style (npj Computational Materials) ──────────────────────────
 # source_pt = target_print_pt × (fig_width / journal_col_width)
@@ -30,14 +31,14 @@ plt.rcParams.update({'font.family': 'sans-serif', 'font.size': _FS,
 # Series definitions
 SERIES = {
     "iiLoss":        dict(prefix="iiLoss_",        exclude="pcgrad|save",
-                          color="#4361EE", marker="o", ls="-",  lw=1.8),
+                          color="#7B9FFF", marker="o", ls="-",  lw=1.8),
     "HdLoss":        dict(prefix="HdLoss_",         exclude="pcgrad|save",
-                          color="#E040AB", marker="s", ls="-",  lw=1.8),
+                          color="#FF85C8", marker="s", ls="-",  lw=1.8),
     "iiLoss+PCGrad": dict(prefix="iiLoss_pcgrad_", exclude=None,
-                          color="#7B9FFF", marker="^", ls="--", lw=1.4,
+                          color="#4361EE", marker="^", ls="--", lw=1.4,
                           anchor="iiLoss_0.0"),
     "HdLoss+PCGrad": dict(prefix="HdLoss_pcgrad_", exclude=None,
-                          color="#FF85C8", marker="D", ls="--", lw=1.4,
+                          color="#E040AB", marker="D", ls="--", lw=1.4,
                           anchor="HdLoss_0.0"),
 }
 
@@ -50,11 +51,10 @@ METRICS = [
     ("rms_xi", r"$\xi_\mathrm{rms}$"),
 ]
 
-# Optimal lambda for iiLoss and HdLoss in panel (b) — marked with a star
-ED_OPTIMA = {
-    "iiLoss+PCGrad": 0.3,   # lowest Hd_MAE across iiLoss+PCGrad sweep
-    "HdLoss+PCGrad": 0.4,   # lowest Hd_MAE across HdLoss+PCGrad sweep
-}
+# λ* markers: shown on panel b (Hd_MAE) only for PCGrad variants.
+# Optimum is detected dynamically from the data (argmin).
+OPTIMA_SERIES  = ["iiLoss+PCGrad", "HdLoss+PCGrad"]
+OPTIMA_PANELS  = {"Hd_MAE"}
 
 
 def extract_alpha(name, prefix):
@@ -72,11 +72,11 @@ def main():
     df = pd.read_csv(args.csv)
     df.columns = df.columns.str.strip()
 
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharey=False)
-    fig.subplots_adjust(wspace=0.35)
+    fig, axes = plt.subplots(3, 1, figsize=(5, 10), sharey=False, sharex=True)
+    fig.subplots_adjust(hspace=0.08)
 
-    # Collect series data for optimum markers in panel b
-    series_data = {}
+    # Collect series data for optimum markers (Hd_MAE and rms_xi panels)
+    series_data = {}   # {col: {label: (sub_df, color)}}
 
     for ax_idx, (ax, (col, ylabel)) in enumerate(zip(axes, METRICS)):
         for label, cfg in SERIES.items():
@@ -113,69 +113,93 @@ def main():
                     markersize=5, markeredgecolor="white",
                     markeredgewidth=0.5, zorder=3, label=label)
 
-            if col == "Hd_MAE":
-                series_data[label] = (sub, color)
+            if col in OPTIMA_PANELS:
+                series_data.setdefault(col, {})[label] = (sub, color)
 
-        ax.set_xlabel(r"$\lambda$", fontsize=_FS)
+        # x-axis: ticks + label only on bottom panel
+        if ax_idx < 2:
+            ax.tick_params(labelbottom=False)
+        else:
+            ax.set_xlabel(r"$\lambda$", fontsize=_FS)
         ax.set_ylabel(ylabel, fontsize=_FS)
         ax.tick_params(labelsize=_FS)
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.1))
         ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.01))
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
-        if ax_idx == 0:
+        if ax_idx in (0, 1):
             ax.set_yticks([0.10, 0.15, 0.20, 0.25])
+            ax.set_ylim(0.087, 0.265)
         elif ax_idx == 2:
-            ax.set_yticks([0.90, 0.95, 1.00, 1.05]); ax.set_ylim(0.895, 1.055)
+            # No hardcoded range — let data drive it, then add 8 % padding
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.05))
+            ax.margins(y=0.08)
         ax.grid(True, which="major", lw=0.4, alpha=0.5)
         ax.grid(True, which="minor", lw=0.2, alpha=0.3)
 
-        # Baseline axhline — label anchored to right end of line
+        # Baseline dotted line
         baseline_row = df[df["model"] == "iiLoss_0.0"]
         if not baseline_row.empty:
             bval = baseline_row[col].values[0]
-            ax.axhline(bval, color="grey", lw=1.0, ls=":", alpha=0.8, zorder=1, label=r"baseline ($\lambda\!=\!0$)")
-            #ax.text(0.97, bval, r"baseline ($\lambda\!=\!0$)",
-            #        transform=ax.get_yaxis_transform(),
-            #        ha="right", va="bottom", fontsize=7, color="grey",
-            #        style="italic",)
+            ax.axhline(bval, color="grey", lw=1.0, ls=":", alpha=0.8, zorder=1,
+                       label=r"baseline ($\lambda\!=\!0$)")
 
-        # Optimum markers in panel (b) for iiLoss and HdLoss
-        if col == "Hd_MAE":
-            for ser_label, opt_alpha in ED_OPTIMA.items():
-                if ser_label not in series_data:
+        # λ* markers: dynamic argmin for Hd_MAE and rms_xi panels
+        if col in OPTIMA_PANELS and col in series_data:
+            for ser_label in OPTIMA_SERIES:
+                if ser_label not in series_data[col]:
                     continue
-                sub, color = series_data[ser_label]
-                row = sub[sub["alpha"] == opt_alpha]
-                if row.empty:
-                    row = sub.iloc[(sub["alpha"] - opt_alpha).abs().argsort()[:1]]
-                xv = row["alpha"].values[0]
-                yv = row[col].values[0]
-                ax.scatter(xv, yv, marker="*", s=180, color=color,
-                           edgecolors="white", linewidths=0.5, zorder=6)
+                sub, color = series_data[col][ser_label]
+                # exclude λ=0 anchor when finding minimum
+                cand = sub[sub["alpha"] > 0]
+                if cand.empty:
+                    continue
+                best_idx = cand[col].idxmin()
+                xv = cand.loc[best_idx, "alpha"]
+                yv = cand.loc[best_idx, col]
+                ax.scatter(xv, yv, marker="*", s=280, color=color,
+                           edgecolors="white", linewidths=0.6, zorder=6)
                 ax.annotate(rf"$\mathbf{{\lambda^*}}$",
-                            xy=(xv, yv), xytext=(4, 4),
+                            xy=(xv, yv), xytext=(7, -12),
                             textcoords="offset points",
                             fontsize=_FS_SM, color=color, fontweight="bold")
 
-    # Legend
+    # Legend — below the figure
+
     handles, labels = axes[0].get_legend_handles_labels()
     seen = {}
     for h, l in zip(handles, labels):
         if l not in seen:
             seen[l] = h
-    fig.legend(seen.values(), seen.keys(),
-               loc="lower center", ncol=len(seen),
-               fontsize=_FS_LEG, framealpha=0.9,
-               bbox_to_anchor=(0.5, -0.13))
 
-    # Panel labels — ax.text for consistency with other figures
+    blank = Patch(visible=False)
+
+    LEGEND_ORDER = [
+    "iiLoss",
+    "HdLoss",
+    "iiLoss+PCGrad",
+    "HdLoss+PCGrad",
+    r"baseline ($\lambda\!=\!0$)",
+    ]
+
+    ordered = [seen[l] for l in LEGEND_ORDER if l in seen]
+    labels = [l for l in LEGEND_ORDER if l in seen]
+
+    ordered.insert(2, blank)
+    labels.insert(2, "")
+    fig.legend(ordered, labels,
+               loc="lower right", ncol=2,
+               fontsize=_FS_LEG, framealpha=0.9,
+               bbox_to_anchor=(1.0, -0.08))
+
+    # Panel labels
     for ax, letter in zip(axes, ["a", "b", "c"]):
-        ax.text(-0.12, 1.05, letter, transform=ax.transAxes,
+        ax.text(-0.30, 1.05, letter, transform=ax.transAxes,
                 fontsize=_FS_PANEL, fontweight="bold", va="bottom", ha="left",
                 clip_on=False)
-        
+
     fig.tight_layout()
     fig.savefig(args.out, dpi=300, bbox_inches="tight")
     print(f"Saved -> {args.out}")
 
-
+if __name__ == "__main__":
+    main()
