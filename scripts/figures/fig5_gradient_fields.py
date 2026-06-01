@@ -110,10 +110,6 @@ for ax, U, V, xs, ys, panel_lbl, title_str, eq_str in panels:
     ax.axvline(0.00, ymin=0.00, ymax=1.00, color = 'k', alpha = 0.3)
     ax.axhline(0.00, xmin=0.00, xmax=1.00, color = 'k', alpha = 0.3)
 
-    # ξ = 1 circle
-    #ax.plot(np.cos(theta_c), np.sin(theta_c),
-    #        '--', color='k', lw=0.7, alpha=0.3, zorder=2)
-
     # origin dot
     ax.plot(0, 0, 'ko', ms=3.5, zorder=5)
 

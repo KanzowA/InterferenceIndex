@@ -175,8 +175,6 @@ for angle, col, lbl, loff in examples_circ:
     draw_vec(ax2, R * np.cos(angle), R * np.sin(angle), col, lbl, loff)
 
 
-# Reference dotted lines at x=1 and y=1
-#ax2.axhline(1.0, color='k', lw=0.8, ls=':', alpha=0.3, zorder=2)
 ax2.axvline(1.0, ymin=0.08/(np.sqrt(2) * 1.18), ymax=1/(np.sqrt(2) * 1.18) + 0.08, color='k', ls=':', alpha=0.3, zorder=2)
 
 # Ticks and limits

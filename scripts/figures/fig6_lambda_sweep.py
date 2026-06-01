@@ -10,11 +10,14 @@ Usage:
 """
 
 import argparse
+import os
 import re
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.patches import Patch
+
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── Journal style (npj Computational Materials) ──────────────────────────
 # source_pt = target_print_pt × (fig_width / journal_col_width)
@@ -65,8 +68,8 @@ def extract_alpha(name, prefix):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", default="results/2026/interference_summary_2026.csv")
-    parser.add_argument("--out", default="figure6_lambda_sweep.png")
+    parser.add_argument("--csv", default=os.path.join(_REPO, "results", "2026", "interference_summary_2026.csv"))
+    parser.add_argument("--out", default=os.path.join(_REPO, "figures", "figure6_lambda_sweep.png"))
     args = parser.parse_args()
 
     df = pd.read_csv(args.csv)

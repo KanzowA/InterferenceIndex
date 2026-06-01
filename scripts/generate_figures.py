@@ -35,8 +35,7 @@ FIGURES = [
 
     (6, "Lambda sweep — iiLoss / HdLoss / PCGrad",
         "scripts/figures/fig6_lambda_sweep.py",
-        ["--csv", "results/2026/interference_summary_2026.csv",
-         "--out",  "figures/figure6_lambda_sweep.png"]),
+        ["--csv", "results/2026/interference_summary_2026.csv"]),
 
     # (7, "ξ distribution evolution",
     #     "scripts/figures/fig7_xi_distribution.py", []),       # TODO

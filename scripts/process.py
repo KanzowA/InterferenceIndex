@@ -11,7 +11,6 @@ from models.iiLossNN import iiLossNN
 from models.HdLossNN import HdLossNN
 
 base_path = dirname(dirname(abspath(__file__)))
-data_path = join(base_path, "data", "2026")
 
 # Dictionary of available models — supports dynamic iiLoss_<lam> names,
 # e.g. "iiLoss_0.0", "iiLoss_0.1", "iiLoss_0.25", "iiLoss_0.5"
