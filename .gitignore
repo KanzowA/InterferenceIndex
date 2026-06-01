@@ -1,48 +1,28 @@
-# ── Python ────────────────────────────────────────────────────────────────────
+# Python
 *.py[cod]
 __pycache__/
 *.egg-info/
 dist/
 build/
 
-# ── OS / editor ───────────────────────────────────────────────────────────────
+# OS / editor
 .DS_Store
 .idea/
 .vscode/
 *~
 
-# ── Jupyter ───────────────────────────────────────────────────────────────────
-*-checkpoint.ipynb
-
-# ── Project-specific ──────────────────────────────────────────────────────────
-
-# Trained model predictions — gitignored, distributed via Zenodo.
-# Download from: https://doi.org/10.5281/zenodo.20468539
-# Regenerate locally: bash scripts/sweep.sh
+# ML outputs (large — regenerate via sweep.sh or Zenodo)
 data/2026/ml/
-
-# Stage-1 checkpoints written by sweep.sh (iiLoss_save_*)
 checkpoints/
-
-# Sweep logs
 logs/
 
-# Working notes not intended for the public repo
-ZENODO_UPLOAD.md
-
-# Zenodo upload archive (created manually, not part of the repo)
-ml_predictions_2026.zip
-
-# Per-compound interference score CSVs — large (~77MB), regenerate with:
-#   python scripts/interference_score.py 2020
-#   python scripts/interference_score.py 2026
-# Summary CSVs (interference_summary_*.csv) are tracked — they're tiny and needed for fig6.
+# Large per-compound score CSVs (regenerate via interference_score.py)
 results/2020/interference_scores_2020.csv
 results/2026/interference_scores_2026.csv
 
-# Stray figures generated in the root by interference_score.py
+# Misc
+ZENODO_UPLOAD.md
+ml_predictions_2026.zip
 interference_circles.png
 score_vs_error.png
-
-# Temporary training artefacts
 tmp*.json
