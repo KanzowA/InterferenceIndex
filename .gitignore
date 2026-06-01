@@ -26,3 +26,6 @@ ml_predictions_2026.zip
 interference_circles.png
 score_vs_error.png
 tmp*.json
+
+# Checks
+scripts/test.py
