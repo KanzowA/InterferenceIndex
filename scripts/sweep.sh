@@ -53,6 +53,11 @@ for DIR in iiLoss_0.0 HdLoss_0.0; do
     cp "${ML_DIR}/iiLoss_save_0.0/ml_input.json" "${ML_DIR}/${DIR}/ml_input.json"
     echo "  → copied λ=0 predictions to ${DIR}" | tee -a "$LOGFILE"
 done
+# Remove iiLoss_save_0.0 from ML_DIR so it does not appear as a duplicate
+# entry in interference_score.py auto-detection. Checkpoints remain in
+# checkpoints/${TARGET}/ and are unaffected.
+rm -rf "${ML_DIR}/iiLoss_save_0.0"
+echo "  → removed iiLoss_save_0.0 from ML_DIR (checkpoints kept)" | tee -a "$LOGFILE"
 echo "[DONE] λ=0 baseline at $(date)" | tee -a "$LOGFILE"
 
 # ── [2..41] λ=0.1..1.0 × 4 variants ─────────────────────────────────────────
