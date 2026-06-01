@@ -307,7 +307,11 @@ def main():
 
         scores    = []
         hd_errors = []   # Hd_ML - Hd_DFT per compound (includes N=1)
-        n_ok, n_skip = 0, 0
+        n_ok = 0
+        n_skip_missing = 0   # result_err is None (compound or product absent from ml_hf)
+        n_skip_N1      = 0   # N == 1 (decomposes only to elements, ξ undefined)
+        n_skip_ml      = 0   # result_ml is None (ML denominator vanishes)
+        tp = fp = fn = tn = 0   # stability classification (Hd_ML ≤ 0 vs Hd_DFT ≤ 0)
 
         for compound in valid_compounds:
             entry   = hullout[compound]
@@ -316,7 +320,7 @@ def main():
                                             normalized_coeffs=normalized_coeffs)
 
             if result_err is None:
-                n_skip += 1
+                n_skip_missing += 1
                 continue
 
             xi_err, N, signed_sum = result_err
@@ -326,15 +330,25 @@ def main():
             hd_err = -signed_sum
             hd_errors.append(hd_err)
 
+            # Stability classification: predict stable iff Hd_ML <= 0
+            # (included for all N, before the N==1 xi-skip below)
+            hd_ml = entry["Hd"] + hd_err
+            if entry["Hd"] <= 0:
+                if hd_ml <= 0: tp += 1
+                else:          fn += 1
+            else:
+                if hd_ml <= 0: fp += 1
+                else:          tn += 1
+
             # xi: exclude single-participant reactions (N=1 is geometrically undefined)
             if N == 1:
-                n_skip += 1
+                n_skip_N1 += 1
                 continue
 
             result_ml = interference_score(compound, rxn_str, ml_hf, dft_hf, mode='ml',
                                            normalized_coeffs=normalized_coeffs)
             if result_ml is None:
-                n_skip += 1
+                n_skip_ml += 1
                 continue
 
             sqrt_N    = math.sqrt(N)
@@ -368,10 +382,19 @@ def main():
         hd_mae  = sum(abs(e) for e in hd_errors) / len(hd_errors) if hd_errors else float('nan')
         hd_rmse = math.sqrt(sum(e**2 for e in hd_errors) / len(hd_errors)) if hd_errors else float('nan')
 
-        print(f"  scored {n_ok} for xi  |  {len(hd_errors)} for Hd MAE  |  skipped {n_skip}")
+        prec = tp / (tp + fp) if (tp + fp) > 0 else float('nan')
+        rec  = tp / (tp + fn) if (tp + fn) > 0 else float('nan')
+        f1   = (2 * prec * rec / (prec + rec)
+                if (prec + rec) > 0 else float('nan'))
+        n_skip = n_skip_missing + n_skip_N1 + n_skip_ml
+        print(f"  scored {n_ok} for xi  |  {len(hd_errors)} for Hd MAE  |  "
+              f"skipped {n_skip} (missing: {n_skip_missing}, N=1: {n_skip_N1}, ml_denom: {n_skip_ml})")
+        print(f"  stability: tp={tp} fp={fp} fn={fn} tn={tn}  →  F1={f1:.4f}  P={prec:.4f}  R={rec:.4f}")
         summary[model] = {"scores": scores, "mae": mae, "rmse": rmse,
                           "hd_mae": hd_mae, "hd_rmse": hd_rmse,
-                          "n": n_ok, "n_hd": len(hd_errors)}
+                          "n": n_ok, "n_hd": len(hd_errors),
+                          "f1": f1, "precision": prec, "recall": rec,
+                          "tp": tp, "fp": fp, "fn": fn, "tn": tn}
 
     # ── Write per-compound CSV ─────────────────────────────────────────────────
     year = "2020" if split.startswith("2020") else "2026"
@@ -393,7 +416,8 @@ def main():
     with open(sum_csv, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["model", "n_xi", "n_hd", "Hf_MAE", "Hf_RMSE",
-                    "Hd_MAE", "Hd_RMSE", "rms_xi", "median_xi"])
+                    "Hd_MAE", "Hd_RMSE", "rms_xi", "median_xi",
+                    "F1", "Precision", "Recall", "TP", "FP", "FN", "TN"])
         for model, s in summary.items():
             sc      = sorted(s["scores"])
             n       = len(sc)
@@ -405,18 +429,22 @@ def main():
                         round(s["hd_mae"],  4),
                         round(s["hd_rmse"], 4),
                         round(rms_xi,       4),
-                        round(med_xi,       4)])
+                        round(med_xi,       4),
+                        round(s["f1"],        4),
+                        round(s["precision"], 4),
+                        round(s["recall"],    4),
+                        s["tp"], s["fp"], s["fn"], s["tn"]])
     print(f"Summary written to              {sum_csv}")
 
     # ── Print comparison table ─────────────────────────────────────────────────
-    col = "{:<12}  {:>7}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}"
-    sep = "─" * 82
+    col = "{:<20}  {:>7}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}"
+    sep = "─" * 96
     print(f"\n{sep}")
     print(f"  Interference Score Summary  ({split})")
     print(f"  lower ξ = more error cancellation  |  Ed = derived decomposition enthalpy")
     print(f"  RMS ξ = sqrt(<ξ²>); null hypothesis: RMS ξ = 1 for i.i.d. residuals")
     print(sep)
-    print(col.format("Model", "N", "Ef MAE", "Ef RMSE", "Ed MAE", "Ed RMSE", "RMS ξ", "Median ξ"))
+    print(col.format("Model", "N", "Ef MAE", "Ef RMSE", "Ed MAE", "Ed RMSE", "RMS ξ", "Median ξ", "F1"))
     print(sep)
     for model, s in summary.items():
         sc     = sorted(s["scores"])
@@ -431,6 +459,7 @@ def main():
             f"{s['hd_rmse']:.4f}",
             f"{rms_xi:.4f}",
             f"{med_xi:.4f}",
+            f"{s['f1']:.4f}",
         ))
     print(sep)
 
