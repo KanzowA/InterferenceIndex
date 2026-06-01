@@ -41,7 +41,7 @@ import torch
 import torch.nn as nn
 
 from .iiLossNN import (
-    iiLossNN, _parse_rxn, MAX_RXN_SIZE, _num_atoms
+    iiLossNN, _parse_rxn, MAX_RXN_SIZE, _ResidualMLP
 )
 
 
@@ -173,8 +173,7 @@ class HdLossNN(iiLossNN):
             rxn_str = entry.get('rxn', '')
             if not rxn_str:
                 continue
-            N_c   = _num_atoms(lbl)
-            pairs = _parse_rxn(rxn_str, label_to_pos, N_c)
+            pairs = _parse_rxn(rxn_str, label_to_pos)
             # Prepend reactant with coefficient -1 so that
             # Σ(weight_i · δ_i) == Hd_DFT − Hd_ML (matches evaluation)
             pairs.insert(0, (label_to_pos[lbl], -1.0))
@@ -205,7 +204,6 @@ class HdLossNN(iiLossNN):
             print("  [HdLossNN] Warning: no reactions in fold — pure MSE.")
 
         # ── network ───────────────────────────────────────────────────────────
-        from InterferenceIndex_clean.models.iiLossNN import _ResidualMLP
         input_dim = X_feat.shape[1]
         self._net = _ResidualMLP(input_dim, self.hidden, self.dropout).to(dev)
 

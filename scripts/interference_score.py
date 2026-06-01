@@ -105,7 +105,12 @@ def num_atoms(formula):
     return sum(int(n) if n else 1 for el, n in tokens if el)
 
 
-def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error'):
+def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error',
+                       normalized_coeffs=False):
+    """
+    normalized_coeffs=False (2020): rxn_str stores raw v_k; weight = v_k * N_k / N_c.
+    normalized_coeffs=True  (2026): rxn_str stores v_k * N_k / N_c already; use directly.
+    """
     products = parse_rxn(rxn_str)
     N_c = num_atoms(compound)
     c = []
@@ -122,8 +127,12 @@ def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error'):
         if formula_k not in ml_hf or formula_k not in dft_hf:
             return None
         delta_k = ml_hf[formula_k] - dft_hf[formula_k] if mode == 'error' else ml_hf[formula_k]
-        N_k = num_atoms(formula_k)
-        c.append(amt_k * N_k * delta_k / N_c)
+        if normalized_coeffs:
+            weight = amt_k                  # 2026: already per-atom weight
+        else:
+            N_k    = num_atoms(formula_k)
+            weight = amt_k * N_k / N_c     # 2020: raw v_k → normalise
+        c.append(weight * delta_k)
                  
     if len(c) == 0:
         return None
@@ -425,6 +434,10 @@ def main():
     HULLOUT = HULLOUT_MAP[split]
     print(f"Using hullout: {HULLOUT}\n")
 
+    # 2026 hullout stores per-atom weights directly in rxn_str (Convention C).
+    # 2020 hullout stores raw stoichiometric coefficients (Convention A, need N_k/N_c).
+    normalized_coeffs = split.startswith("2026")
+
     # ── Auto-detect iiLoss_* and HdLoss_* variants ────────────────────────────
     global MODELS
 
@@ -493,7 +506,8 @@ def main():
         for compound in valid_compounds:
             entry   = hullout[compound]
             rxn_str = entry["rxn"]
-            result_err = interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error')
+            result_err = interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error',
+                                            normalized_coeffs=normalized_coeffs)
 
             if result_err is None:
                 n_skip += 1
@@ -511,7 +525,8 @@ def main():
                 n_skip += 1
                 continue
 
-            result_ml = interference_score(compound, rxn_str, ml_hf, dft_hf, mode='ml')
+            result_ml = interference_score(compound, rxn_str, ml_hf, dft_hf, mode='ml',
+                                           normalized_coeffs=normalized_coeffs)
             if result_ml is None:
                 n_skip += 1
                 continue

@@ -272,8 +272,7 @@ class iiLossNN(nn.Module):
             rxn_str = entry.get('rxn', '')
             if not rxn_str:
                 continue
-            N_c   = _num_atoms(lbl)
-            pairs = _parse_rxn(rxn_str, label_to_pos, N_c)
+            pairs = _parse_rxn(rxn_str, label_to_pos)
             # Prepend reactant with coefficient -1 so that
             # Σ(weight_i · δ_i) == Hd_DFT − Hd_ML (matches evaluation)
             pairs.insert(0, (label_to_pos[lbl], -1.0))
@@ -510,16 +509,16 @@ class iiLossNN(nn.Module):
 # Helper
 # ---------------------------------------------------------------------------
 
-def _parse_rxn(rxn_str, label_to_pos, N_c):
+def _parse_rxn(rxn_str, label_to_pos):
     """
     Parse the product side of a reaction string, e.g.
     '0.6667_Ac + 0.3333_Ac1Ag3', into [(position, weight), ...].
 
     Elements are skipped (Hf = 0 by definition, excluded in evaluation).
-    Coefficients are normalised to per-atom units matching interference_score.py:
-        weight = v_k * N_k / N_c
-    where v_k is the stoichiometric coefficient from the rxn_str,
-    N_k = atom count of product k, N_c = atom count of reactant compound.
+
+    The 2026 hullout stores coefficients that are ALREADY per-atom weights
+    (v_k * N_k / N_c), so we use them directly without additional normalisation.
+    The 2020 hullout would require N_k/N_c, but all NN training uses 2026 data.
 
     Note: the reactant itself is NOT added here — callers must prepend it
     with coefficient -1.0 so that sum(weights * deltas) == Hd_DFT - Hd_ML.
@@ -534,6 +533,5 @@ def _parse_rxn(rxn_str, label_to_pos, N_c):
             if _is_element(formula):
                 continue                    # elements: Hf = 0, skip
             if formula in label_to_pos:
-                N_k = _num_atoms(formula)
-                pairs.append((label_to_pos[formula], coeff * N_k / N_c))
+                pairs.append((label_to_pos[formula], coeff))
     return pairs
