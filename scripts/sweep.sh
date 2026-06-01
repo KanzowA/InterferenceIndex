@@ -1,100 +1,91 @@
 #!/bin/bash
-# sweep.sh — Run iiLoss or HdLoss hyperparameter sweep (single-stage or PCGrad).
+# sweep.sh — Full hyperparameter sweep over all 4 model variants.
+#
+# Structure (41 runs total):
+#   [1/41]  λ=0.0  →  iiLoss_save_0.0  (MSE baseline + checkpoints)
+#                      output copied to iiLoss_0.0 and HdLoss_0.0
+#   [2..41] λ=0.1..1.0  ×  {iiLoss, iiLoss_pcgrad, HdLoss, HdLoss_pcgrad}
 #
 # Usage:
-#   bash sweep.sh iiLoss             # iiLoss λ sweep,        single-stage
-#   bash sweep.sh HdLoss             # HdLoss α sweep,        single-stage
-#   bash sweep.sh iiLoss pcgrad      # iiLoss+PCGrad,         two-stage
-#   bash sweep.sh HdLoss pcgrad      # HdLoss+PCGrad,         two-stage
-#
-# Optional third argument overrides the training target (default: Hf):
-#   bash sweep.sh iiLoss single Hd
+#   bash sweep.sh        # target: Hf (default)
+#   bash sweep.sh Hd     # target: Hd
 #
 # Prerequisites:
 #   - conda environment 'interference' (see environment.yml)
-#   - GPU recommended; set CUDA_VISIBLE_DEVICES="" to force CPU
-#   - For pcgrad runs: stage-1 checkpoints are generated automatically
+#   - GPU recommended; set CUDA_VISIBLE_DEVICES=0 if needed
 
-# ── Arguments ─────────────────────────────────────────────────────────────────
-MODEL_TYPE=${1:-iiLoss}   # iiLoss | HdLoss
-MODE=${2:-single}         # single | pcgrad
-TARGET=${3:-Hf}           # Hf | Hd
+TARGET=${1:-Hf}
+SPLIT="allMP_2026"
+VALUES=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
+VARIANTS=(iiLoss iiLoss_pcgrad HdLoss HdLoss_pcgrad)
 
-if [[ "$MODEL_TYPE" != "iiLoss" && "$MODEL_TYPE" != "HdLoss" ]]; then
-    echo "ERROR: MODEL_TYPE must be 'iiLoss' or 'HdLoss', got '$MODEL_TYPE'"
-    exit 1
-fi
-
-# ── Hyperparameter values ──────────────────────────────────────────────────────
-if [[ "$MODE" == "pcgrad" ]]; then
-    VALUES=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
-else
-    VALUES=(0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
-fi
-
-# ── Environment ────────────────────────────────────────────────────────────────
+# ── Environment ───────────────────────────────────────────────────────────────
 source ~/miniconda3/etc/profile.d/conda.sh 2>/dev/null && conda activate interference 2>/dev/null
 PYTHON=$(which python 2>/dev/null || which python3)
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 mkdir -p logs
-
-LOGFILE="logs/sweep_${MODEL_TYPE}_${MODE}_${TARGET}.log"
+LOGFILE="logs/sweep_full_${TARGET}.log"
+ML_DIR="data/2026/ml/${TARGET}"
 
 echo "============================================================" | tee "$LOGFILE"
-echo "  ${MODEL_TYPE} sweep [${MODE}] — target: ${TARGET}"        | tee -a "$LOGFILE"
-echo "  Values: ${VALUES[*]}"                                      | tee -a "$LOGFILE"
-echo "  Python: $PYTHON ($($PYTHON --version 2>&1))"              | tee -a "$LOGFILE"
-echo "  Started: $(date)"                                          | tee -a "$LOGFILE"
+echo "  Full sweep — target: ${TARGET} — 41 runs"                  | tee -a "$LOGFILE"
+echo "  Python: $PYTHON ($($PYTHON --version 2>&1))"               | tee -a "$LOGFILE"
+echo "  Started: $(date)"                                           | tee -a "$LOGFILE"
 echo "============================================================" | tee -a "$LOGFILE"
 
-# ── Stage 1: save MSE checkpoints (PCGrad only) ────────────────────────────────
-if [[ "$MODE" == "pcgrad" ]]; then
-    CKPT_DIR="checkpoints/${TARGET}"
-    NEED_STAGE1=false
-    for fold in 0 1 2 3 4; do
-        [[ ! -f "${CKPT_DIR}/${TARGET}_fold${fold}.pt" ]] && NEED_STAGE1=true && break
-    done
+# ── [1/41] λ=0.0 — MSE baseline, shared across all variants ──────────────────
+echo "" | tee -a "$LOGFILE"
+echo "[1/41]  iiLoss_save_0.0  (λ=0, MSE baseline + checkpoints)  ($(date))" | tee -a "$LOGFILE"
+echo "-----------------------------------------------------" | tee -a "$LOGFILE"
 
-    if $NEED_STAGE1; then
-        echo "" | tee -a "$LOGFILE"
-        echo "Stage 1: training iiLoss_save_0.0 (pure MSE) to generate checkpoints..." | tee -a "$LOGFILE"
-        $PYTHON -u scripts/train_models.py allMP_2026 "$TARGET" iiLoss_save_0.0 \
-            2>&1 | tee -a "$LOGFILE"
-        [[ ${PIPESTATUS[0]} -ne 0 ]] && echo "Stage 1 failed — aborting." && exit 1
-        echo "Stage 1 done." | tee -a "$LOGFILE"
-    else
-        echo "Stage-1 checkpoints found — skipping." | tee -a "$LOGFILE"
-    fi
+$PYTHON -u scripts/train_models.py "$SPLIT" "$TARGET" iiLoss_save_0.0 \
+    2>&1 | tee -a "$LOGFILE"
+
+if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+    echo "ERROR: λ=0 baseline failed — aborting." | tee -a "$LOGFILE"
+    exit 1
 fi
 
-# ── Main sweep ─────────────────────────────────────────────────────────────────
-SPLIT="allMP_2026"
-N=${#VALUES[@]}
+# Copy λ=0 predictions to iiLoss_0.0 and HdLoss_0.0 (identical: pure MSE)
+for DIR in iiLoss_0.0 HdLoss_0.0; do
+    mkdir -p "${ML_DIR}/${DIR}"
+    cp "${ML_DIR}/iiLoss_save_0.0/ml_input.json" "${ML_DIR}/${DIR}/ml_input.json"
+    echo "  → copied λ=0 predictions to ${DIR}" | tee -a "$LOGFILE"
+done
+echo "[DONE] λ=0 baseline at $(date)" | tee -a "$LOGFILE"
 
-for i in "${!VALUES[@]}"; do
-    VAL="${VALUES[$i]}"
-    MODEL=$( [[ "$MODE" == "pcgrad" ]] \
-        && echo "${MODEL_TYPE}_pcgrad_${VAL}" \
-        || echo "${MODEL_TYPE}_${VAL}" )
+# ── [2..41] λ=0.1..1.0 × 4 variants ─────────────────────────────────────────
+IDX=2
 
-    echo "" | tee -a "$LOGFILE"
-    echo "[$((i+1))/$N]  ${MODEL}  ($(date))" | tee -a "$LOGFILE"
-    echo "-----------------------------------------------------" | tee -a "$LOGFILE"
+for VAL in "${VALUES[@]}"; do
+    for VARIANT in "${VARIANTS[@]}"; do
 
-    $PYTHON -u scripts/train_models.py "$SPLIT" "$TARGET" "$MODEL" \
-        2>&1 | tee -a "$LOGFILE"
+        if [[ "$VARIANT" == *"pcgrad"* ]]; then
+            MODEL="${VARIANT}_${VAL}"       # e.g. iiLoss_pcgrad_0.1
+        else
+            MODEL="${VARIANT}_${VAL}"       # e.g. iiLoss_0.1
+        fi
 
-    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-        echo "ERROR: ${MODEL} failed — stopping." | tee -a "$LOGFILE"
-        exit 1
-    fi
-    echo "[DONE] ${MODEL} at $(date)" | tee -a "$LOGFILE"
+        echo "" | tee -a "$LOGFILE"
+        echo "[${IDX}/41]  ${MODEL}  ($(date))" | tee -a "$LOGFILE"
+        echo "-----------------------------------------------------" | tee -a "$LOGFILE"
+
+        $PYTHON -u scripts/train_models.py "$SPLIT" "$TARGET" "$MODEL" \
+            2>&1 | tee -a "$LOGFILE"
+
+        if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+            echo "ERROR: ${MODEL} failed — stopping." | tee -a "$LOGFILE"
+            exit 1
+        fi
+        echo "[DONE] ${MODEL} at $(date)" | tee -a "$LOGFILE"
+        ((IDX++))
+    done
 done
 
 echo "" | tee -a "$LOGFILE"
 echo "============================================================" | tee -a "$LOGFILE"
-echo "  Sweep complete — $(date)"                                  | tee -a "$LOGFILE"
-echo "  Score results:"                                            | tee -a "$LOGFILE"
-echo "    python scripts/interference_score.py 2026"           | tee -a "$LOGFILE"
+echo "  Sweep complete — $(date)"                                   | tee -a "$LOGFILE"
+echo "  Evaluate with:"                                             | tee -a "$LOGFILE"
+echo "    python scripts/interference_score.py 2026"               | tee -a "$LOGFILE"
 echo "============================================================" | tee -a "$LOGFILE"
