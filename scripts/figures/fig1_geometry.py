@@ -122,7 +122,7 @@ t_ann = np.linspace(0, np.pi / 4, 50)
 r_ann = 0.25
 ax1.plot(r_ann * np.cos(t_ann), r_ann * np.sin(t_ann), 'k-', lw=1.5, zorder=6)
 ax1.text(r_ann * 0.7 * np.cos(np.pi / 8),
-         r_ann * 0.6 * np.sin(np.pi / 8),
+         r_ann * 0.6 * np.sin(np.pi / 8) + 0.02,
          r'$\varphi$', fontsize=_FS, va='center', ha='center')
 
 ax1.axvline(0.00, ymin=0.00, ymax=1.00, color = 'k', alpha = 0.3)
@@ -161,7 +161,7 @@ t_ann = np.linspace(0, np.pi / 4, 50)
 r_ann = 0.25
 ax2.plot(r_ann * np.cos(t_ann), r_ann * np.sin(t_ann), 'k-', lw=1.5, zorder=6)
 ax2.text(r_ann * 0.7 * np.cos(np.pi / 8),
-         r_ann * 0.6 * np.sin(np.pi / 8),
+         r_ann * 0.6 * np.sin(np.pi / 8) + 0.02,
          r'$\varphi$', fontsize=_FS, va='center', ha='center')
 
 # Example vectors at rightful places: θ=0° (ξ=√2), θ=45° (ξ=1), θ=90° (ξ=0)
