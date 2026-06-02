@@ -123,7 +123,7 @@ r_ann = 0.25
 ax1.plot(r_ann * np.cos(t_ann), r_ann * np.sin(t_ann), 'k-', lw=1.5, zorder=6)
 ax1.text(r_ann * 0.7 * np.cos(np.pi / 8),
          r_ann * 0.6 * np.sin(np.pi / 8),
-         r'$\theta$', fontsize=_FS, va='center', ha='center')
+         r'$\varphi$', fontsize=_FS, va='center', ha='center')
 
 ax1.axvline(0.00, ymin=0.00, ymax=1.00, color = 'k', alpha = 0.3)
 ax1.axhline(0.00, xmin=0.00, xmax=1.00, color = 'k', alpha = 0.3)
@@ -142,9 +142,9 @@ ax1.text(-0.22, 1.18, 'a', transform=ax1.transAxes,
 # Coordinate system: x = ξ = √N cosθ,  y = √N sinθ
 # where θ = ∠(1̂, r̂).  The arc sits at radius R = √N.
 # ══════════════════════════════════════════════════════════════════════════════
-theta_q = np.linspace(0, np.pi / 2, 600)
-x_arc   = R * np.cos(theta_q)   # ξ
-y_arc   = R * np.sin(theta_q)
+phi_q = np.linspace(0, np.pi / 2, 600)
+x_arc   = R * np.cos(phi_q)   # ξ
+y_arc   = R * np.sin(phi_q)
 
 # Coloured arc via LineCollection (colour = ξ = x-coordinate)
 pts  = np.array([x_arc, y_arc]).T.reshape(-1, 1, 2)
@@ -162,7 +162,7 @@ r_ann = 0.25
 ax2.plot(r_ann * np.cos(t_ann), r_ann * np.sin(t_ann), 'k-', lw=1.5, zorder=6)
 ax2.text(r_ann * 0.7 * np.cos(np.pi / 8),
          r_ann * 0.6 * np.sin(np.pi / 8),
-         r'$\theta$', fontsize=_FS, va='center', ha='center')
+         r'$\varphi$', fontsize=_FS, va='center', ha='center')
 
 # Example vectors at rightful places: θ=0° (ξ=√2), θ=45° (ξ=1), θ=90° (ξ=0)
 examples_circ = [
@@ -184,8 +184,8 @@ ax2.set_xticks(tick_v); ax2.set_xticklabels(tick_l)
 ax2.set_yticks(tick_v); ax2.set_yticklabels(tick_l)
 ax2.set_xlim(-0.05 * R, R * 1.1)
 ax2.set_ylim(-0.05 * R, R * 1.1)
-ax2.set_xlabel(r'$\xi = \sqrt{N}\cos\theta$', fontsize=_FS, labelpad=5)
-ax2.set_ylabel(r'$\eta = \sqrt{N}\sin\theta$', fontsize=_FS, labelpad=5)
+ax2.set_xlabel(r'$\xi = \sqrt{N}\cos\varphi$', fontsize=_FS, labelpad=5)
+ax2.set_ylabel(r'$\eta = \sqrt{N}\sin\varphi$', fontsize=_FS, labelpad=5)
 ax2.set_aspect('equal')
 
 # Panel label: outside, top-left

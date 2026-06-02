@@ -67,7 +67,7 @@ for key, fn in GEN.items():
 
 
 # -- Panel drawing ------------------------------------------------------------
-arc_theta = np.linspace(0, np.pi / 2, 300)
+arc_phi = np.linspace(0, np.pi / 2, 300)
 
 def draw_panel(ax, key):
     all_xi   = np.concatenate([data[key][N] for N in N_VALS])
@@ -78,7 +78,7 @@ def draw_panel(ax, key):
     # Concentric arcs + N labels
     for N in N_VALS:
         R = np.sqrt(N)
-        ax.plot(R * np.cos(arc_theta), R * np.sin(arc_theta),
+        ax.plot(R * np.cos(arc_phi), R * np.sin(arc_phi),
                 color='lightgray', lw=1.0, zorder=0)
         ax.text(R * np.cos(0.24) + 0.01 - R * 0.003,
                 R * np.sin(0.24),
@@ -136,8 +136,8 @@ def draw_panel(ax, key):
     ax.set_ylim(0, CIRC_TOP)
     ax.set_xticks(TICK_VALS)
     ax.set_yticks(TICK_VALS)
-    ax.set_xlabel(r'$\xi = \sqrt{N}\cos\theta$', fontsize=_FS)
-    ax.set_ylabel(r'$\eta = \sqrt{N}\sin\theta$', fontsize=_FS)
+    ax.set_xlabel(r'$\xi = \sqrt{N}\cos\varphi$', fontsize=_FS)
+    ax.set_ylabel(r'$\eta = \sqrt{N}\sin\varphi$', fontsize=_FS)
     ax.set_aspect('equal')
 
 # -- Figure -------------------------------------------------------------------

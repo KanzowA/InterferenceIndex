@@ -33,16 +33,16 @@ plt.rcParams.update({'font.family': 'sans-serif', 'font.size': _FS,
 
 # Series definitions
 SERIES = {
-    "iiLoss":        dict(prefix="iiLoss_",        exclude="pcgrad|save",
+    "iiLoss":        dict(prefix="iiLoss_",        exclude="pcgrad|save|finetune",
                           color="#7B9FFF", marker="o", ls="-",  lw=1.8),
-    "HdLoss":        dict(prefix="HdLoss_",         exclude="pcgrad|save",
+    "HdLoss":        dict(prefix="HdLoss_",         exclude="pcgrad|save|finetune",
                           color="#FF85C8", marker="s", ls="-",  lw=1.8),
     "iiLoss+PCGrad": dict(prefix="iiLoss_pcgrad_", exclude=None,
                           color="#4361EE", marker="^", ls="--", lw=1.4,
-                          anchor="iiLoss_0.0"),
+                          anchor="iiLoss_finetune_0.0"),
     "HdLoss+PCGrad": dict(prefix="HdLoss_pcgrad_", exclude=None,
                           color="#E040AB", marker="D", ls="--", lw=1.4,
-                          anchor="HdLoss_0.0"),
+                          anchor="HdLoss_finetune_0.0"),
 }
 
 EF_MAE_MAX = 0.32

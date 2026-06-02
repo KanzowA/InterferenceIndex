@@ -1,10 +1,13 @@
 #!/bin/bash
 # sweep.sh — Full hyperparameter sweep over all 4 model variants.
 #
-# Structure (41 runs total):
-#   [1/41]  λ=0.0  →  iiLoss_save_0.0  (MSE baseline + checkpoints)
+# Structure (42 runs total):
+#   [1/42]  λ=0.0  →  iiLoss_save_0.0  (MSE baseline + checkpoints)
 #                      output copied to iiLoss_0.0 and HdLoss_0.0
-#   [2..41] λ=0.1..1.0  ×  {iiLoss, iiLoss_pcgrad, HdLoss, HdLoss_pcgrad}
+#   [2/42]  λ=0.0  →  iiLoss_finetune_0.0  (MSE fine-tune control, 500+200 epochs)
+#                      output copied to HdLoss_finetune_0.0
+#                      serves as λ=0 anchor for PCGrad curves in Fig. 6
+#   [3..42] λ=0.1..1.0  ×  {iiLoss, iiLoss_pcgrad, HdLoss, HdLoss_pcgrad}
 #
 # Usage:
 #   bash sweep.sh        # target: Hf (default)
@@ -29,14 +32,14 @@ LOGFILE="logs/sweep_full_${TARGET}.log"
 ML_DIR="data/2026/ml/${TARGET}"
 
 echo "============================================================" | tee "$LOGFILE"
-echo "  Full sweep — target: ${TARGET} — 41 runs"                  | tee -a "$LOGFILE"
+echo "  Full sweep — target: ${TARGET} — 42 runs"                  | tee -a "$LOGFILE"
 echo "  Python: $PYTHON ($($PYTHON --version 2>&1))"               | tee -a "$LOGFILE"
 echo "  Started: $(date)"                                           | tee -a "$LOGFILE"
 echo "============================================================" | tee -a "$LOGFILE"
 
-# ── [1/41] λ=0.0 — MSE baseline, shared across all variants ──────────────────
+# ── [1/42] λ=0.0 — MSE baseline, saves checkpoints ──────────────────────────
 echo "" | tee -a "$LOGFILE"
-echo "[1/41]  iiLoss_save_0.0  (λ=0, MSE baseline + checkpoints)  ($(date))" | tee -a "$LOGFILE"
+echo "[1/42]  iiLoss_save_0.0  (λ=0, MSE baseline + checkpoints)  ($(date))" | tee -a "$LOGFILE"
 echo "-----------------------------------------------------" | tee -a "$LOGFILE"
 
 $PYTHON -u scripts/train_models.py "$SPLIT" "$TARGET" iiLoss_save_0.0 \
@@ -53,27 +56,40 @@ for DIR in iiLoss_0.0 HdLoss_0.0; do
     cp "${ML_DIR}/iiLoss_save_0.0/ml_input.json" "${ML_DIR}/${DIR}/ml_input.json"
     echo "  → copied λ=0 predictions to ${DIR}" | tee -a "$LOGFILE"
 done
-# Remove iiLoss_save_0.0 from ML_DIR so it does not appear as a duplicate
-# entry in interference_score.py auto-detection. Checkpoints remain in
-# checkpoints/${TARGET}/ and are unaffected.
 rm -rf "${ML_DIR}/iiLoss_save_0.0"
 echo "  → removed iiLoss_save_0.0 from ML_DIR (checkpoints kept)" | tee -a "$LOGFILE"
 echo "[DONE] λ=0 baseline at $(date)" | tee -a "$LOGFILE"
 
-# ── [2..41] λ=0.1..1.0 × 4 variants ─────────────────────────────────────────
-IDX=2
+# ── [2/42] λ=0.0 fine-tune control — λ=0 anchor for PCGrad curves ────────────
+echo "" | tee -a "$LOGFILE"
+echo "[2/42]  iiLoss_finetune_0.0  (λ=0, MSE fine-tune control, 500+200 epochs)  ($(date))" | tee -a "$LOGFILE"
+echo "-----------------------------------------------------" | tee -a "$LOGFILE"
+
+$PYTHON -u scripts/train_models.py "$SPLIT" "$TARGET" iiLoss_finetune_0.0 \
+    2>&1 | tee -a "$LOGFILE"
+
+if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+    echo "ERROR: iiLoss_finetune_0.0 failed — aborting." | tee -a "$LOGFILE"
+    exit 1
+fi
+
+# Copy to HdLoss_finetune_0.0 (lam=0 → identical regardless of model class)
+mkdir -p "${ML_DIR}/HdLoss_finetune_0.0"
+cp "${ML_DIR}/iiLoss_finetune_0.0/ml_input.json" \
+   "${ML_DIR}/HdLoss_finetune_0.0/ml_input.json"
+echo "  → copied finetune λ=0 predictions to HdLoss_finetune_0.0" | tee -a "$LOGFILE"
+echo "[DONE] finetune λ=0 control at $(date)" | tee -a "$LOGFILE"
+
+# ── [3..42] λ=0.1..1.0 × 4 variants ─────────────────────────────────────────
+IDX=3
 
 for VAL in "${VALUES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
 
-        if [[ "$VARIANT" == *"pcgrad"* ]]; then
-            MODEL="${VARIANT}_${VAL}"       # e.g. iiLoss_pcgrad_0.1
-        else
-            MODEL="${VARIANT}_${VAL}"       # e.g. iiLoss_0.1
-        fi
+        MODEL="${VARIANT}_${VAL}"   # e.g. iiLoss_0.1, iiLoss_pcgrad_0.1
 
         echo "" | tee -a "$LOGFILE"
-        echo "[${IDX}/41]  ${MODEL}  ($(date))" | tee -a "$LOGFILE"
+        echo "[${IDX}/42]  ${MODEL}  ($(date))" | tee -a "$LOGFILE"
         echo "-----------------------------------------------------" | tee -a "$LOGFILE"
 
         $PYTHON -u scripts/train_models.py "$SPLIT" "$TARGET" "$MODEL" \

@@ -77,18 +77,15 @@ fig, axes = plt.subplots(1, 2, figsize=(12, 5.5))
 fig.subplots_adjust(left=0.07, right=0.88, wspace=0.32)
 
 ext = EXTENT * 0.93   # reference-line extent
-theta_c = np.linspace(0, 2 * np.pi, 400)
+phi_c = np.linspace(0, 2 * np.pi, 400)
 
 panels = [
     (axes[0], U_mse,  V_mse,  xs_a, ys_a, 'a',
      r'$\mathcal{L}_\mathrm{MSE} = \|\mathbf{r}\|^2$',
-     r'$\nabla_\mathbf{r}\,\mathcal{L}_\mathrm{MSE} = 2\mathbf{r}$'),
+     r'$-\nabla_\mathbf{r}\,\mathcal{L}_\mathrm{MSE}$'),
     (axes[1], U_xi2,  V_xi2,  xs_b, ys_b, 'b',
-     r'$\mathcal{L}_{\xi^2} = \xi^2 = \dfrac{S^2}{Q}$',
-     (r'$\nabla_\mathbf{r}\,\xi^2 = \dfrac{2}{Q}'
-      r'\!\left(S\mathbf{1} - \xi^2\mathbf{r}\right)$'
-      '\n'
-      r'$S = \sum r_i,\quad Q = \|\mathbf{r}\|^2$')),
+     r'$\mathcal{L}_{\xi^2} = \xi^2 = N\cdot \cos^2 \varphi$',
+     r'$-\nabla_\mathbf{r}\,\xi^2$'),
 ]
 
 for ax, U, V, xs, ys, panel_lbl, title_str, eq_str in panels:

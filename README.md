@@ -15,7 +15,7 @@ It extends the benchmark framework of [Bartel et al. (2020)](https://www.nature.
 ```
 ├── data/                        # Materials Project hull data
 │   ├── 2020/                    # Bartel et al. 2020 MP snapshot
-│   └── 2026/                    # Current MP snapshot
+│   └── 2026/                    # MP snapshot from 2026/05/27
 │                                # 2026 ML predictions: https://doi.org/10.5281/zenodo.20468539
 ├── results/                     # Pre-computed interference scores
 │   ├── 2020/                    # interference_scores_2020.csv, interference_summary_2020.csv

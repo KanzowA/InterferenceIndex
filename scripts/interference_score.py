@@ -352,12 +352,12 @@ def main():
                 continue
 
             sqrt_N    = math.sqrt(N)
-            theta_err = math.acos(min(xi_err / sqrt_N, 1.0))
-            eta_err = sqrt_N * math.sin(theta_err)
+            phi_err = math.acos(min(xi_err / sqrt_N, 1.0))
+            eta_err = sqrt_N * math.sin(phi_err)
 
             xi_ml    = result_ml[0]
-            theta_ml = math.acos(min(xi_ml / sqrt_N, 1.0))
-            eta_ml = sqrt_N * math.sin(theta_ml)
+            phi_ml = math.acos(min(xi_ml / sqrt_N, 1.0))
+            eta_ml = sqrt_N * math.sin(phi_ml)
 
             n_ok += 1
             scores.append(xi_err)
@@ -370,10 +370,10 @@ def main():
                 "Hd_err":    round(hd_err, 6),
                 "xi_err":    round(xi_err, 6),
                 "eta_err":   round(eta_err, 6),
-                "theta_err": round(math.degrees(theta_err), 4),
+                "phi_err": round(math.degrees(phi_err), 4),
                 "xi_ml":     round(xi_ml, 6),
                 "eta_ml":    round(eta_ml, 6),
-                "theta_ml":  round(math.degrees(theta_ml), 4),
+                "phi_ml":  round(math.degrees(phi_ml), 4),
                 "N":         N,
                 "sqrt_N":    round(sqrt_N, 4),
             })
@@ -402,8 +402,8 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     out_csv = os.path.join(out_dir, f"interference_scores_{year}.csv")
     fieldnames = ["model", "compound", "stability", "Hf_DFT", "Hd_DFT", "Hd_err",
-                  "xi_err",   "eta_err", "theta_err",
-                  "xi_ml",    "eta_ml",  "theta_ml",
+                  "xi_err",   "eta_err", "phi_err",
+                  "xi_ml",    "eta_ml",  "phi_ml",
                   "N", "sqrt_N"]
     with open(out_csv, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
@@ -465,4 +465,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main

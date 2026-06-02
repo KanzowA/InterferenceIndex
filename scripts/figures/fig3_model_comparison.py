@@ -85,7 +85,7 @@ def plot(by_model: dict, models: list, out_path: str):
 
     norm      = TwoSlopeNorm(vmin=0, vcenter=1.0, vmax=math.sqrt(10))
     cmap_obj  = plt.get_cmap(_CMAP)
-    arc_theta = np.linspace(0, np.pi / 2, 300)
+    arc_phi = np.linspace(0, np.pi / 2, 300)
     tick_vals = [t for t in [0, 1, 2, 3] if t <= lim]
 
     fig, axes = plt.subplots(n_rows, n_cols,
@@ -105,7 +105,7 @@ def plot(by_model: dict, models: list, out_path: str):
         # Concentric arcs
         for N_val in sorted(set(Ns)):
             R = math.sqrt(N_val)
-            ax.plot(R * np.cos(arc_theta), R * np.sin(arc_theta),
+            ax.plot(R * np.cos(arc_phi), R * np.sin(arc_phi),
                     color="lightgray", lw=1.0, zorder=0)
             ax.text(R * np.cos(0.24) + 0.01 - R * 0.01,
                     R * np.sin(0.24),
@@ -150,8 +150,8 @@ def plot(by_model: dict, models: list, out_path: str):
         ax.set_ylim(0, lim)
         ax.set_xticks(tick_vals)
         ax.set_yticks(tick_vals)
-        ax.set_xlabel(r"$\xi = \sqrt{N}\cos\theta$", fontsize=_FS)
-        ax.set_ylabel(r"$\eta = \sqrt{N}\sin\theta$", fontsize=_FS)
+        ax.set_xlabel(r"$\xi = \sqrt{N}\cos\varphi$", fontsize=_FS)
+        ax.set_ylabel(r"$\eta = \sqrt{N}\sin\varphi$", fontsize=_FS)
         ax.set_aspect("equal")
         ax.tick_params(top=False, right=False)
         ax.text(1.0, 1.1, model_name, transform=ax.transAxes,
