@@ -29,3 +29,5 @@ tmp*.json
 
 # Checks
 scripts/test.py
+
+results_section_draft.md

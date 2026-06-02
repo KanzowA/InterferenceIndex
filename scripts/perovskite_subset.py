@@ -198,7 +198,8 @@ def main():
     # ── Compute metrics ────────────────────────────────────────────────────────
     rows = []
     header = ["model", "n_perov", "Hf_MAE", "Hf_RMSE",
-              "Hd_MAE", "Hd_RMSE", "mean_xi", "median_xi"]
+              "Hd_MAE", "Hd_RMSE", "mean_xi", "median_xi",
+              "F1", "Precision", "Recall", "TP", "FP", "FN", "TN"]
 
     for model in all_models:
         ml_path = os.path.join(ML_DIR, model, "ml_input.json")
@@ -220,6 +221,7 @@ def main():
         # Hd MAE / RMSE — reconstruct Ed from hullout reactions
         hd_errors = []
         xis       = []
+        tp = fp = fn = tn = 0
         for f in perov_with_rxn:
             if f not in ml_hf:
                 continue
@@ -253,6 +255,14 @@ def main():
             hd_ml = hd_ml_num - hd_ml_den
             hd_errors.append(hd_ml - hd_dft)
 
+            # Stability classification: predict stable iff Hd_ML <= 0
+            if hd_dft <= 0:
+                if hd_ml <= 0: tp += 1
+                else:          fn += 1
+            else:
+                if hd_ml <= 0: fp += 1
+                else:          tn += 1
+
             # ξ
             xi = interference_score(f, rxn_str, ml_hf, dft_hf_all)
             if xi is not None:
@@ -269,20 +279,27 @@ def main():
         xis_s    = sorted(xis)
         med_xi   = xis_s[n // 2] if n % 2 else (xis_s[n//2-1] + xis_s[n//2]) / 2
 
-        rows.append([model, n, hf_mae, hf_rmse, hd_mae, hd_rmse, mean_xi, med_xi])
-        print(f"  {model:<30s}  n={n:5d}  "
-              f"Hf={hf_mae:.4f}  Hd={hd_mae:.4f}  "
-              f"ξ_mean={mean_xi:.4f}  ξ_med={med_xi:.4f}")
+        prec = tp / (tp + fp) if (tp + fp) > 0 else float('nan')
+        rec  = tp / (tp + fn) if (tp + fn) > 0 else float('nan')
+        f1   = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else float('nan')
 
-    # ── Save CSV ───────────────────────────────────────────────────────────────
+        rows.append([model, n, hf_mae, hf_rmse, hd_mae, hd_rmse, mean_xi, med_xi,
+                     f1, prec, rec, tp, fp, fn, tn])
+        print(f"  {model:<30s}  n={n:5d}  "
+              f"Hf={hf_mae:.4f}  Hd={hd_mae:.4f}  xi_mean={mean_xi:.4f}  F1={f1:.4f}")
+
+    # ── Save CSV ───────────────────────────────────────────────────
     out_path = os.path.join(REPO_ROOT, "results", "perovskite_summary.csv")
     with open(out_path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(header)
         for row in rows:
-            w.writerow([row[0], row[1]] + [f"{v:.4f}" for v in row[2:]])
+            # first two cols: model (str) and n_perov (int); last four: TP/FP/FN/TN (int)
+            floats = [f"{v:.4f}" for v in row[2:-4]]
+            ints   = [str(int(v)) for v in row[-4:]]
+            w.writerow([row[0], row[1]] + floats + ints)
 
-    print(f"\nSaved → {out_path}")
+    print(f"\nSaved \u2192 {out_path}")
 
 if __name__ == "__main__":
     main()
