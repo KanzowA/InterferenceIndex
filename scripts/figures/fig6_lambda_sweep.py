@@ -156,8 +156,8 @@ def main():
             ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.005))
             ax.margins(y=0.08)
         elif col == "rms_xi":
-            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.05))
-            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.01))
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.1))
+            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.02))
             ax.margins(y=0.08)
             ax.axhline(1.0, color='#6B7280', lw=0.9, ls='--', alpha=0.6,
                        zorder=1, label=r'i.i.d. ($\xi_\mathrm{rms}=1$)')
@@ -202,13 +202,12 @@ def main():
 
     blank = Patch(visible=False)
     LEGEND_ORDER = [
-        "iiLoss", "HdLoss", "iiLoss+PCGrad", "HdLoss+PCGrad",
-        r"baseline ($\lambda\!=\!0$)",
+        "iiLoss", "iiLoss+PCGrad","HdLoss", "HdLoss+PCGrad",r"baseline ($\lambda\!=\!0$)"
     ]
     ordered    = [seen[l] for l in LEGEND_ORDER if l in seen]
     labels_leg = [l       for l in LEGEND_ORDER if l in seen]
-    ordered.insert(2, blank)
-    labels_leg.insert(2, "")
+    ordered.insert(4, blank)
+    labels_leg.insert(4, "")
     fig.legend(ordered, labels_leg,
                loc="lower center", ncol=3,
                fontsize=_FS_LEG, framealpha=0.9,
