@@ -15,13 +15,14 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from matplotlib.colors import TwoSlopeNorm
 
 # ── Journal style (npj Computational Materials) ──────────────────────────
 # source_pt = target_print_pt × (fig_width / journal_col_width)
 # Targets 7 pt (body) and 6 pt (minor) at 170 mm double-column.
 _JOURNAL_COL_W = 6.69          # 170 mm in inches
-_FIG_W         = 12.0          # this figure's width in inches
+_FIG_W         = 14.0          # rendering width for font scaling
 _FS    = round(7.0 * _FIG_W / _JOURNAL_COL_W)   # → 13 pt  (body / axis labels)
 _FS_SM = round(6.0 * _FIG_W / _JOURNAL_COL_W)   # → 11 pt  (minor annotations)
 _FS_LEG, _FS_CB = _FS, _FS
@@ -73,8 +74,13 @@ def _unit(U, V):
     return U / mag, V / mag
 
 # ── Figure ────────────────────────────────────────────────────────────────────
-fig, axes = plt.subplots(1, 2, figsize=(12, 5.5))
-fig.subplots_adjust(left=0.07, right=0.88, wspace=0.32)
+fig = plt.figure(figsize=(6.5, 14))
+gs  = gridspec.GridSpec(2, 1,
+                        height_ratios=[1, 1],
+                        hspace=0.25,
+                        left=0.12, right=0.95, top=0.96, bottom=0.10)
+axes   = [fig.add_subplot(gs[0]), fig.add_subplot(gs[1])]
+cbar_ax = fig.add_axes([0.15, 0.03, 0.70, 0.012])
 
 ext = EXTENT * 0.93   # reference-line extent
 phi_c = np.linspace(0, 2 * np.pi, 400)
@@ -85,7 +91,7 @@ panels = [
      r'$-\nabla_\mathbf{r}\,\mathcal{L}_\mathrm{MSE}$'),
     (axes[1], U_xi2,  V_xi2,  xs_b, ys_b, 'b',
      r'$\mathcal{L}_{\xi^2} = \xi^2 = N\cdot \cos^2 \varphi$',
-     r'$-\nabla_\mathbf{r}\,\xi^2$'),
+     r'$-\nabla_\mathbf{r}\,\mathcal{L}_{\xi^2}$'),
 ]
 
 for ax, U, V, xs, ys, panel_lbl, title_str, eq_str in panels:
@@ -131,12 +137,11 @@ for ax, U, V, xs, ys, panel_lbl, title_str, eq_str in panels:
     ax.set_ylabel(r'$r_2$', fontsize=_FS)
     ax.tick_params(top=False, right=False)
 
-# ── Shared colorbar ───────────────────────────────────────────────────────────
-cbar_ax = fig.add_axes([0.90, 0.15, 0.018, 0.70])
+# ── Shared colorbar (horizontal, between panels) ──────────────────────────────
 sm = plt.cm.ScalarMappable(cmap=CMAP, norm=norm)
 sm.set_array([])
-cbar = fig.colorbar(sm, cax=cbar_ax)
-cbar.set_label(r'$\xi$', fontsize=_FS_CB)
+cbar = fig.colorbar(sm, cax=cbar_ax, orientation='horizontal')
+cbar.set_label(r'$\xi$', fontsize=_FS_CB, labelpad=2)
 cbar.set_ticks([0, 1, SQ2])
 cbar.set_ticklabels(['0', '1', r'$\sqrt{2}$'])
 

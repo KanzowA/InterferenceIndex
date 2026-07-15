@@ -143,7 +143,7 @@ def plot(by_model: dict, models: list, out_path: str):
                 zorder=4, clip_on=False)
         ax.plot([rms_xi, rms_xi], [0, _vline_top(rms_xi)],
                 color="black", lw=1.2, ls="--", zorder=5, clip_on=False)
-        ax.text(0.98, 0.98, r"$\sqrt{\langle\xi^2\rangle}= " + rf"{rms_xi:.2f}$",
+        ax.text(0.98, 0.98, r"$\xi_\mathrm{rms} =" + rf"{rms_xi:.2f}$",
                 transform=ax.transAxes, fontsize=_FS_SM, ha="right", va="top")
 
         ax.set_xlim(0, lim)
@@ -161,11 +161,11 @@ def plot(by_model: dict, models: list, out_path: str):
     # Shared legend in first empty panel slot (or figure bottom)
     _leg_handles = [
         mlines.Line2D([], [], color="black", marker="D", markersize=5,
-                      linestyle="None", label=r"$\sqrt{\langle\xi^2\rangle}_N$"),
+                      linestyle="None", label=r"$\xi_\mathrm{rms}(N)$"),
         mlines.Line2D([], [], color=_COL_REF, lw=0.9, ls=":", alpha=0.7,
                       label=r"$\xi = 1$"),
         mlines.Line2D([], [], color="black", lw=1.2, ls="--",
-                      label=r"$\sqrt{\langle\xi^2\rangle}$"),
+                      label=r"$\xi_\mathrm{rms}$"),
     ]
     # Hide any empty slots after the last model (skip legend slot)
     for idx in range(len(models_present), n_rows * n_cols - 1):
