@@ -6,7 +6,7 @@ vs regularisation strength lambda.  One line per model family.
 
 Usage:
     python scripts/figures/fig6_lambda_sweep.py
-    python scripts/figures/fig6_lambda_sweep.py --csv results/2026/interference_summary_2026.csv --out figures/figure6_lambda_sweep.png
+    python scripts/figures/fig4.py --csv results/2026/interference_summary_2026.csv --out figures/figure4.png
 """
 
 import argparse
@@ -73,7 +73,7 @@ def main():
     parser.add_argument("--csv", default=os.path.join(_REPO, "results", "2026",
                                                        "interference_summary_2026.csv"))
     parser.add_argument("--out", default=os.path.join(_REPO, "figures",
-                                                       "figure6_lambda_sweep.png"))
+                                                       "figure4.png"))
     args = parser.parse_args()
 
     df = pd.read_csv(args.csv)

@@ -8,9 +8,9 @@ Reads pre-computed per-compound scores from results/2020/interference_scores_202
 
 Usage:
     python scripts/fig3_model_comparison.py
-    python scripts/fig3_model_comparison.py --csv results/2020/interference_scores_2020.csv
+    python scripts/figures/fig2.py --csv results/2020/interference_scores_2020.csv
     python scripts/fig3_model_comparison.py --models ElFrac Meredig Magpie
-    python scripts/fig3_model_comparison.py --out figures/figure3_model_comparison.png
+    python scripts/figures/fig2.py --out figures/figure2.png
 """
 
 import argparse
@@ -212,7 +212,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv",    default=os.path.join(_REPO, "results", "2020", "interference_scores_2020.csv"))
     parser.add_argument("--models", nargs="+", default=DEFAULT_MODELS)
-    parser.add_argument("--out",    default=os.path.join(_REPO, "figures", "figure3_model_comparison.png"))
+    parser.add_argument("--out",    default=os.path.join(_REPO, "figures", "figure2.png"))
     args = parser.parse_args()
 
     print(f"Loading scores from {args.csv} ...")

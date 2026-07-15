@@ -144,7 +144,7 @@ def main():
     import argparse
     _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default=os.path.join(_REPO, "figures", "figure5_gradient_fields.png"))
+    parser.add_argument("--out", default=os.path.join(_REPO, "figures", "figure3.png"))
     args = parser.parse_args()
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     plt.savefig(args.out, dpi=300, bbox_inches="tight")

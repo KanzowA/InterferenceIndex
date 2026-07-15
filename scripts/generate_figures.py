@@ -6,7 +6,7 @@ Outputs are written to figures/.
 
 Usage:
     python generate_figures.py           # generate all figures
-    python generate_figures.py --fig 6   # generate a specific figure
+    python generate_figures.py --fig 4   # generate a specific figure
 """
 
 import argparse
@@ -16,29 +16,25 @@ from pathlib import Path
 
 # ── Figure registry ────────────────────────────────────────────────────────────
 # Each entry: (figure number, label, script, extra args)
+#
+# NOT IN CURRENT MANUSCRIPT (commented out):
+#   - fig1_geometry.py  (geometric interpretation, N=2 heatmap)
+#   - fig4_bartel_summary.py  (never implemented)
+#
 FIGURES = [
-    (1, "Geometry of the interference index",
-        "scripts/figures/fig1_geometry.py", []),
+    (1, "Interference circles (conceptual)",
+        "scripts/figures/fig1.py", []),
 
-    (2, "Interference circles (conceptual)",
-        "scripts/figures/fig2_circles.py", []),
-
-    (3, "Model comparison — interference scores on allMP",
-        "scripts/figures/fig3_model_comparison.py",
+    (2, "Model comparison — interference scores on allMP",
+        "scripts/figures/fig2.py",
         ["--csv", "results/2020/interference_scores_2020.csv"]),
 
-    # (4, "Bartel model summary graphic",
-    #     "scripts/figures/fig4_bartel_summary.py", []),        # TODO
+    (3, "Gradient field panel (MSE vs ξ²)",
+        "scripts/figures/fig3.py", []),
 
-    (5, "Gradient field panel (MSE vs ξ²)",
-        "scripts/figures/fig5_gradient_fields.py", []),
-
-    (6, "Lambda sweep — iiLoss / HdLoss / PCGrad",
-        "scripts/figures/fig6_lambda_sweep.py",
+    (4, "Lambda sweep — iiLoss / HdLoss / PCGrad",
+        "scripts/figures/fig4.py",
         ["--csv", "results/2026/interference_summary_2026.csv"]),
-
-    # (7, "ξ distribution evolution",
-    #     "scripts/figures/fig7_xi_distribution.py", []),       # TODO
 ]
 
 

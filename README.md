@@ -33,11 +33,10 @@ It extends the benchmark framework of [Bartel et al. (2020)](https://www.nature.
     ├── perovskite_subset.py     # Subset analysis on ABO₃ perovskites
     ├── download_mp_current.py   # Re-fetch MP data (requires API key)
     └── figures/                 # Individual figure scripts
-        ├── fig1_geometry.py
-        ├── fig2_circles.py
-        ├── fig3_model_comparison.py
-        ├── fig5_gradient_fields.py
-        └── fig6_lambda_sweep.py
+        ├── fig1.py              # Fig. 1 — Interference circles (conceptual)
+        ├── fig2.py              # Fig. 2 — Model comparison (allMP 2020)
+        ├── fig3.py              # Fig. 3 — Gradient field panel (MSE vs ξ²)
+        └── fig4.py              # Fig. 4 — Lambda sweep (iiLoss / HdLoss / PCGrad)
 ```
 
 ---
@@ -77,8 +76,8 @@ Pre-computed results for all models in the paper are already provided there.
 **3. Reproduce figures:**
 ```bash
 python scripts/generate_figures.py        # all figures
-python scripts/figures/fig6_lambda_sweep.py --csv results/2026/interference_summary_2026.csv
-python scripts/figures/fig5_gradient_fields.py
+python scripts/figures/fig4.py --csv results/2026/interference_summary_2026.csv
+python scripts/figures/fig3.py
 # etc.
 ```
 
@@ -93,4 +92,4 @@ $\xi = \frac{\left|\sum_i c_i\right|}{\left|\left|\mathbf{c}\right|\right|} = \s
 $\xi \rightarrow 0$: errors cancel across the reaction (favourable)
 $\xi \rightarrow \sqrt{N}$: errors align constructively (unfavourable)
 
-ξ is scale-in
+ξ is scale-in...
