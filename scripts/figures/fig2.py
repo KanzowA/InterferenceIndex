@@ -78,7 +78,7 @@ def plot(by_model: dict, models: list, out_path: str):
     hist_max = 0.0
     for m in models_present:
         xis = np.array([r["xi_err"] for r in by_model[m]])
-        counts, _ = np.histogram(xis, bins=35, range=(0, lim), density=True)
+        counts, _ = np.histogram(xis, bins=np.arange(0, lim + 0.1, 0.1), density=True)
         if counts.size:
             hist_max = max(hist_max, float(counts.max()))
     HIST_SCALE = HIST_H / hist_max if hist_max > 0 else 1.0
@@ -125,7 +125,7 @@ def plot(by_model: dict, models: list, out_path: str):
 
         # Histogram above frame
         rms_xi = math.sqrt(float(np.mean(xis ** 2)))
-        counts, edges = np.histogram(xis, bins=35, range=(0, lim), density=True)
+        counts, edges = np.histogram(xis, bins=np.arange(0, lim + 0.1, 0.1), density=True)
         for left, right, h in zip(edges[:-1], edges[1:], counts):
             ax.bar(left, h * HIST_SCALE, width=right - left, bottom=lim,
                    color=cmap_obj(norm((left + right) / 2)),

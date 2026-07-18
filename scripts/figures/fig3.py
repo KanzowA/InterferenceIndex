@@ -26,7 +26,7 @@ _FIG_W         = 14.0          # rendering width for font scaling
 _FS    = round(7.0 * _FIG_W / _JOURNAL_COL_W)   # → 13 pt  (body / axis labels)
 _FS_SM = round(6.0 * _FIG_W / _JOURNAL_COL_W)   # → 11 pt  (minor annotations)
 _FS_LEG, _FS_CB = _FS, _FS
-_FS_PANEL = 20   # panel labels a/b/c — fixed across all figures
+_FS_PANEL = 30   # panel labels a/b/c — fixed across all figures
 plt.rcParams.update({
     'font.family': 'sans-serif',
     'font.size':   _FS,
@@ -74,7 +74,7 @@ def _unit(U, V):
     return U / mag, V / mag
 
 # ── Figure ────────────────────────────────────────────────────────────────────
-fig = plt.figure(figsize=(6.5, 14))
+fig = plt.figure(figsize=(6.5, 13))
 gs  = gridspec.GridSpec(2, 1,
                         height_ratios=[1, 1],
                         hspace=0.25,
@@ -119,7 +119,7 @@ for ax, U, V, xs, ys, panel_lbl, title_str, eq_str in panels:
     # ── Labels / equations ────────────────────────────────────────────────────
     ax.text(-0.12, 1.05, panel_lbl, transform=ax.transAxes,
             fontsize=_FS_PANEL, fontweight='bold', va='bottom')
-    ax.set_title(title_str, fontsize=_FS, pad=7)
+    #ax.set_title(title_str, fontsize=_FS, pad=7)
 
     ax.text(0.97, 0.03, eq_str,
             transform=ax.transAxes,

@@ -39,7 +39,7 @@ _PT_BODY, _PT_SM = 9.0, 7.5   # target print sizes (pt)
 _FS    = round(_PT_BODY * _FIG_W / _JOURNAL_COL_W)   # → 16 pt
 _FS_SM = round(_PT_SM   * _FIG_W / _JOURNAL_COL_W)   # → 13 pt
 _FS_LEG, _FS_CB = _FS, _FS
-_FS_PANEL = 20   # panel labels a/b/c — fixed across all figures
+_FS_PANEL = 30   # panel labels a/b/c — fixed across all figures
 plt.rcParams.update({'font.family': 'sans-serif', 'font.size': _FS,
                      'axes.linewidth': 0.8})
 
@@ -103,7 +103,7 @@ def draw_panel(ax, key):
         ax.scatter([m], [md], color='black', s=30, marker='D', zorder=5)
 
     # Histogram bars — bin the ~10⁵ sampled points directly
-    edges = np.linspace(0, CIRC_TOP, 36)
+    edges = np.arange(0, CIRC_TOP + 0.1, 0.1)
     counts, _ = np.histogram(all_xi, bins=edges, density=True)
 
     for left, right, h in zip(edges[:-1], edges[1:], counts):
@@ -154,7 +154,7 @@ ax_a.tick_params(labelbottom=False)
 # Shared legend — diamond + ξ=1 line, shared across both panels
 _leg_handles = [
     mlines.Line2D([], [], color='black', marker='D', markersize=5,
-                  linestyle='None', label=r'$\sqrt{\langle\xi^2\rangle}_N$'),
+                  linestyle='None', label=r'$\xi_\mathrm{rms}(N)$'),
     mlines.Line2D([], [], color=COL_REF, lw=0.9, ls=':', alpha=0.7,
                   label=r'$\xi = 1$'),
     mlines.Line2D([], [], color='black', lw=1.2, ls='--',

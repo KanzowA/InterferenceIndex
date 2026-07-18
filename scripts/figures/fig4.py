@@ -33,15 +33,15 @@ plt.rcParams.update({'font.family': 'sans-serif', 'font.size': _FS,
 
 # ── Series definitions ────────────────────────────────────────────────────
 SERIES = {
-    "iiLoss":        dict(prefix="iiLoss_",        exclude="pcgrad|save|finetune",
-                          color="#7B9FFF", marker="o", ls="-",  lw=1.2, alpha=0.35),
-    "HdLoss":        dict(prefix="HdLoss_",         exclude="pcgrad|save|finetune",
-                          color="#FF85C8", marker="s", ls="-",  lw=1.8),
+    #"iiLoss":        dict(prefix="iiLoss_",        exclude="pcgrad|save|finetune",
+    #                      color="#E61D60", marker="o", ls="-",  lw=1.2, alpha=0.35),
+    #"HdLoss":        dict(prefix="HdLoss_",         exclude="pcgrad|save|finetune",
+    #                      color="#1EACE4", marker="s", ls="-",  lw=1.8, alpha = 0.35),
     "iiLoss+PCGrad": dict(prefix="iiLoss_pcgrad_", exclude=None,
-                          color="#4361EE", marker="^", ls="--", lw=1.8,
+                          color="#E61D60", marker="s", markersize = 14, ls="--", lw=1.8,
                           anchor="iiLoss_save_0.0"),
     "HdLoss+PCGrad": dict(prefix="HdLoss_pcgrad_", exclude=None,
-                          color="#E040AB", marker="D", ls="--", lw=1.8,
+                          color="#1EACE4", marker="o", markersize = 14, ls="--", lw=1.8,
                           anchor="HdLoss_0.0"),
 }
 
@@ -49,13 +49,11 @@ ALPHA_MAX = 0.8
 
 # ── Panels ────────────────────────────────────────────────────────────────
 METRICS = [
-    ("Hf_MAE", r"$\Delta H_\mathrm{f}$ MAE / eV atom$^{-1}$"),
-    ("Hd_MAE", r"$\Delta H_\mathrm{d}$ MAE / eV atom$^{-1}$"),
+    ("Hf_MAE", r"$\mathrm{MAE}\left(\Delta_\mathrm{f}H\right)$ / eV atom$^{-1}$"),
+    ("Hd_MAE", r"$\mathrm{MAE}\left(\Delta_\mathrm{d}H\right)$ / eV atom$^{-1}$"),
     ("F1",     r"$F_1$"),
     ("rms_xi", r"$\xi_\mathrm{rms}$"),
 ]
-
-MAE_COLS = {"Hf_MAE", "Hd_MAE"}   # fixed ylim + overflow markers
 
 # lambda* markers: col -> "min" (lower-is-better) or "max" (higher-is-better)
 OPTIMA_SERIES = ["iiLoss+PCGrad", "HdLoss+PCGrad"]
@@ -124,9 +122,11 @@ def main():
                     markersize=5, markeredgecolor="white",
                     markeredgewidth=0.5, zorder=3, label=label,
                     alpha=alpha, clip_on=True)
+            ax.axvline(0.3, color='gray', ls='--', lw=0.8, alpha=0.4, label = r"$\lambda=0.3$")
+            
 
             # Overflow triangles only for MAE panels, non-faded series
-            if col in MAE_COLS and alpha >= 1.0:
+            if col in ('Hf_MAE', 'Hd_MAE') and alpha >= 1.0:
                 ylim_max = 0.265
                 over = sub[sub[col] > ylim_max]
                 if not over.empty:
@@ -144,22 +144,28 @@ def main():
 
         ax.set_ylabel(ylabel, fontsize=_FS)
         ax.tick_params(labelsize=_FS)
-        ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.1))
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
 
-        if col in MAE_COLS:
-            ax.set_yticks([0.10, 0.15, 0.20, 0.25])
-            ax.set_ylim(0.087, 0.265)
-            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.01))
+        if col == 'Hf_MAE':
+            ax.set_ylim(0.097, 0.131)
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.01))
+            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.002))
+        elif col == 'Hd_MAE':
+            ax.set_ylim(0.109, 0.137)
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.01))
+            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.002))
         elif col == "F1":
-            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.02))
-            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.005))
-            ax.margins(y=0.08)
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.01))
+            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.002))
+            #ax.margins(y=0.08)
+            ax.set_ylim(0.509,0.541)
         elif col == "rms_xi":
-            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.1))
-            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.02))
-            ax.margins(y=0.08)
-            ax.axhline(1.0, color='#6B7280', lw=0.9, ls='--', alpha=0.6,
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.05))
+            ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.01))
+            #ax.margins(y=0.08)
+            ax.set_ylim(0.895, 1.115)
+            ax.axhline(1.0, color='#6B7280', lw=0.9, ls=':', alpha=0.6,
                        zorder=1, label=r'i.i.d. ($\xi_\mathrm{rms}=1$)')
 
         ax.grid(True, which="major", lw=0.4, alpha=0.5)
@@ -169,9 +175,9 @@ def main():
         baseline_row = df[df["model"] == "iiLoss_0.0"]
         if not baseline_row.empty:
             bval = baseline_row[col].values[0]
-            ax.axhline(bval, color="grey", lw=1.0, ls=":", alpha=0.8, zorder=1,
+            ax.axhline(bval, color="grey", lw=1.0, ls="-", alpha=0.8, zorder=1,
                        label=r"baseline ($\lambda\!=\!0$)")
-
+        """
         # lambda* markers
         if col in OPTIMA_PANELS and col in series_data:
             direction = OPTIMA_PANELS[col]
@@ -192,7 +198,7 @@ def main():
                             xy=(xv, yv), xytext=(7, -12),
                             textcoords="offset points",
                             fontsize=_FS_SM, color=color, fontweight="bold")
-
+        """
     # ── Legend ────────────────────────────────────────────────────────────
     seen = {}
     for ax in axes:
@@ -202,14 +208,12 @@ def main():
 
     blank = Patch(visible=False)
     LEGEND_ORDER = [
-        "iiLoss", "iiLoss+PCGrad","HdLoss", "HdLoss+PCGrad",r"baseline ($\lambda\!=\!0$)"
+        "iiLoss", "iiLoss+PCGrad","HdLoss", "HdLoss+PCGrad", r"$\lambda=0.3$", r"baseline ($\lambda\!=\!0$)"
     ]
     ordered    = [seen[l] for l in LEGEND_ORDER if l in seen]
-    labels_leg = [l       for l in LEGEND_ORDER if l in seen]
-    ordered.insert(4, blank)
-    labels_leg.insert(4, "")
+    labels_leg = [l.split('+')[0]       for l in LEGEND_ORDER if l in seen]
     fig.legend(ordered, labels_leg,
-               loc="lower center", ncol=3,
+               loc="lower center", ncol=2,
                fontsize=_FS_LEG, framealpha=0.9,
                bbox_to_anchor=(0.5, -0.08))
 
