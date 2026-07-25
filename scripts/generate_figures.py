@@ -14,13 +14,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# ── Figure registry ────────────────────────────────────────────────────────────
-# Each entry: (figure number, label, script, extra args)
-#
-# NOT IN CURRENT MANUSCRIPT (commented out):
-#   - fig1_geometry.py  (geometric interpretation, N=2 heatmap)
-#   - fig4_bartel_summary.py  (never implemented)
-#
 FIGURES = [
     (1, "Interference circles (conceptual)",
         "scripts/figures/fig1.py", []),
@@ -29,7 +22,7 @@ FIGURES = [
         "scripts/figures/fig2.py",
         ["--csv", "results/2020/interference_scores_2020.csv"]),
 
-    (3, "Gradient field panel (MSE vs ξ²)",
+    (3, "Gradient field panel",
         "scripts/figures/fig3.py", []),
 
     (4, "Lambda sweep — iiLoss / HdLoss / PCGrad",
@@ -65,7 +58,6 @@ def run(fig_num=None):
             print(f"  [FAILED] exit code {ret.returncode}")
             failed.append(num)
 
-    # ── Summary ───────────────────────────────────────────────────────────────
     print(f"\n{'='*60}")
     print(f"  Done: {len(ok)} OK  |  {len(failed)} failed  |  {len(skipped)} skipped")
     if failed:
