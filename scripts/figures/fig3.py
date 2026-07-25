@@ -1,13 +1,9 @@
 """
-figure5_gradient_fields.py
---------------------------
-Figure 5: Gradient field comparison in 2D residual space (N=2).
-
-  (a) -∇MSE   = -2r          — purely radial,     collapses toward origin
-  (b) -∇ξ²   = -(2/Q)(S1-ξ²r) — purely tangential, rotates toward ξ = 0
-
-Background in both panels: ξ heatmap (RdBu_r / TwoSlopeNorm),
-consistent with Figures 1–3.
+fig3.py
+------------------------
+Figure 3: Gradient descent field comparison in 2D residual space (N=2).
+  (a) -∇MSE   = -2r
+  (b) -∇ξ²   = -(2/Q)(S1-ξ²r)
 """
 
 import os
@@ -21,10 +17,10 @@ from matplotlib.colors import TwoSlopeNorm
 # ── Journal style (npj Computational Materials) ──────────────────────────
 # source_pt = target_print_pt × (fig_width / journal_col_width)
 # Targets 7 pt (body) and 6 pt (minor) at 170 mm double-column.
-_JOURNAL_COL_W = 6.69          # 170 mm in inches
+_COL_W = 6.69          # 170 mm in inches
 _FIG_W         = 14.0          # rendering width for font scaling
-_FS    = round(7.0 * _FIG_W / _JOURNAL_COL_W)   # → 13 pt  (body / axis labels)
-_FS_SM = round(6.0 * _FIG_W / _JOURNAL_COL_W)   # → 11 pt  (minor annotations)
+_FS    = round(7.0 * _FIG_W / _COL_W)   # → 13 pt  (body / axis labels)
+_FS_SM = round(6.0 * _FIG_W / _COL_W)   # → 11 pt  (minor annotations)
 _FS_LEG, _FS_CB = _FS, _FS
 _FS_PANEL = 30   # panel labels a/b/c — fixed across all figures
 plt.rcParams.update({

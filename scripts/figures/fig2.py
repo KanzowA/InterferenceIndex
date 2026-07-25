@@ -1,16 +1,10 @@
 """
-fig3_model_comparison.py
+fig2.py
 ------------------------
-Fig. 3 — Interference circles for the seven baseline models.
+Figure 2 — Interference circles for the seven baseline models.
 
 Reads pre-computed per-compound scores from results/2020/interference_scores_2020.csv
 (generated once by: python interference_score.py allMP).
-
-Usage:
-    python scripts/fig3_model_comparison.py
-    python scripts/figures/fig2.py --csv results/2020/interference_scores_2020.csv
-    python scripts/fig3_model_comparison.py --models ElFrac Meredig Magpie
-    python scripts/figures/fig2.py --out figures/figure2.png
 """
 
 import argparse
@@ -27,15 +21,12 @@ import matplotlib.lines as mlines
 import numpy as np
 from matplotlib.colors import TwoSlopeNorm
 
-# ── Default model order (matches Bartel et al. 2020) ──────────────────────────
+# Default model order
 DEFAULT_MODELS = ["ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet", "Roost", "CGCNN"]
 
 _CMAP    = "RdBu_r"
 _COL_REF = "#6B7280"
-
-# ── Journal style (npj Computational Materials) ────────────────────────────────────────────
-# Figsize is dynamic; font sizes are computed inside plot() after n_cols is known.
-_JOURNAL_COL_W = 6.69   # 170 mm in inches
+_COL_W = 6.69
 
 
 def load_scores(csv_path: str, models: list) -> dict:
@@ -57,15 +48,15 @@ def plot(by_model: dict, models: list, out_path: str):
     if not models_present:
         raise ValueError("No data found for any of the requested models.")
 
-    # Layout: 4 cols for 7 models (2 rows of 4+3) instead of 3 cols (3×3 with lone last panel)
+    # Layout
     n = len(models_present)
     n_cols = 4 if n > 6 else min(n, 3)
     n_rows = math.ceil(n / n_cols)
 
-    # Font sizes: target 7 pt (body) / 6 pt (minor) at 170 mm double-column
+    # Font sizes
     _FIG_W  = 5.5 * n_cols + 0.8
-    _FS     = round(7.0 * _FIG_W / _JOURNAL_COL_W)
-    _FS_SM  = round(6.0 * _FIG_W / _JOURNAL_COL_W)
+    _FS     = round(7.0 * _FIG_W / _COL_W)
+    _FS_SM  = round(6.0 * _FIG_W / _COL_W)
     _FS_LEG, _FS_CB = _FS, _FS
     plt.rcParams.update({"font.family": "sans-serif", "font.size": _FS,
                          "axes.linewidth": 0.8})
@@ -74,7 +65,7 @@ def plot(by_model: dict, models: list, out_path: str):
     lim   = math.sqrt(max(all_N)) + 0.2
     HIST_H = lim * 0.40
 
-    # Global histogram scale so all panels are comparable
+    # Global histogram scale
     hist_max = 0.0
     for m in models_present:
         xis = np.array([r["xi_err"] for r in by_model[m]])
@@ -92,7 +83,6 @@ def plot(by_model: dict, models: list, out_path: str):
                              figsize=(5.5 * n_cols + 0.8, 5.5 * n_rows),
                              squeeze=False)
 
-    # Top row: first (n_cols-1) models + legend; bottom row: remaining models
     _LEG_SLOT = n_cols - 1  # legend occupies last slot of row 0
     for idx, model_name in enumerate(models_present):
         slot = idx if idx < _LEG_SLOT else idx + 1
@@ -171,7 +161,7 @@ def plot(by_model: dict, models: list, out_path: str):
     for idx in range(len(models_present), n_rows * n_cols - 1):
         slot = idx if idx < _LEG_SLOT else idx + 1
         axes[slot // n_cols, slot % n_cols].set_visible(False)
-    if True:  # always use the dedicated legend slot
+    if True:
         leg_ax  = axes[0, _LEG_SLOT]
         leg_ax.set_visible(True)
         leg_ax.axis("off")

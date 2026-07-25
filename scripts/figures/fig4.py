@@ -1,12 +1,11 @@
 """
-plot_lambda_sweep.py
+fig4.py
 --------------------
-2×2 figure: (a) Hf MAE, (b) Hd MAE, (c) F1, (d) RMS xi
+  (a) Hf MAE
+  (b) Hd MAE
+  (c) F1
+  (d) xi_rms
 vs regularisation strength lambda.  One line per model family.
-
-Usage:
-    python scripts/figures/fig6_lambda_sweep.py
-    python scripts/figures/fig4.py --csv results/2026/interference_summary_2026.csv --out figures/figure4.png
 """
 
 import argparse
@@ -20,23 +19,17 @@ import matplotlib.ticker as ticker
 from matplotlib.patches import Patch
 
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# ── Journal style (npj Computational Materials) ──────────────────────────
-_JOURNAL_COL_W = 6.69          # 170 mm double-column in inches
-_FIG_W         = 12.0          # scaling reference
-_FS    = round(7.0 * _FIG_W / _JOURNAL_COL_W)   # → 13 pt  (body / axis labels)
-_FS_SM = round(6.0 * _FIG_W / _JOURNAL_COL_W)   # → 11 pt  (minor annotations)
+_COL_W = 6.69
+_FIG_W         = 12.0
+_FS    = round(7.0 * _FIG_W / _COL_W)
+_FS_SM = round(6.0 * _FIG_W / _COL_W)
 _FS_LEG = _FS
-_FS_PANEL = 20   # panel labels a/b/c/d
+_FS_PANEL = 20
 plt.rcParams.update({'font.family': 'sans-serif', 'font.size': _FS,
                      'axes.linewidth': 0.8})
 
-# ── Series definitions ────────────────────────────────────────────────────
+# Series definitions
 SERIES = {
-    #"iiLoss":        dict(prefix="iiLoss_",        exclude="pcgrad|save|finetune",
-    #                      color="#E61D60", marker="o", ls="-",  lw=1.2, alpha=0.35),
-    #"HdLoss":        dict(prefix="HdLoss_",         exclude="pcgrad|save|finetune",
-    #                      color="#1EACE4", marker="s", ls="-",  lw=1.8, alpha = 0.35),
     "iiLoss+PCGrad": dict(prefix="iiLoss_pcgrad_", exclude=None,
                           color="#E61D60", marker="s", markersize = 14, ls="--", lw=1.8,
                           anchor="iiLoss_save_0.0"),
@@ -47,17 +40,13 @@ SERIES = {
 
 ALPHA_MAX = 0.8
 
-# ── Panels ────────────────────────────────────────────────────────────────
+# Panels
 METRICS = [
     ("Hf_MAE", r"$\mathrm{MAE}\left(\Delta_\mathrm{f}H\right)$ / eV atom$^{-1}$"),
     ("Hd_MAE", r"$\mathrm{MAE}\left(\Delta_\mathrm{d}H\right)$ / eV atom$^{-1}$"),
     ("F1",     r"$F_1$"),
     ("rms_xi", r"$\xi_\mathrm{rms}$"),
 ]
-
-# lambda* markers: col -> "min" (lower-is-better) or "max" (higher-is-better)
-OPTIMA_SERIES = ["iiLoss+PCGrad", "HdLoss+PCGrad"]
-OPTIMA_PANELS = {"Hd_MAE": "min", "F1": "max"}
 
 
 def extract_alpha(name, prefix):
@@ -80,13 +69,10 @@ def main():
     fig, axes_2d = plt.subplots(2, 2, figsize=(10, 7), sharey=False, sharex=True)
     fig.subplots_adjust(hspace=0.08, wspace=0.42)
 
-    # Flatten in reading order: a=top-left, b=top-right, c=bottom-left, d=bottom-right
     axes = [axes_2d[0, 0], axes_2d[0, 1], axes_2d[1, 0], axes_2d[1, 1]]
 
-    series_data = {}   # {col: {label: (sub_df, color)}}
-
     for ax_idx, (ax, (col, ylabel)) in enumerate(zip(axes, METRICS)):
-        row = ax_idx // 2   # 0 = top, 1 = bottom
+        row = ax_idx // 2
 
         for label, cfg in SERIES.items():
             prefix = cfg["prefix"]
@@ -124,8 +110,6 @@ def main():
                     alpha=alpha, clip_on=True)
             ax.axvline(0.3, color='gray', ls='--', lw=0.8, alpha=0.4, label = r"$\lambda=0.3$")
             
-
-            # Overflow triangles only for MAE panels, non-faded series
             if col in ('Hf_MAE', 'Hd_MAE') and alpha >= 1.0:
                 ylim_max = 0.265
                 over = sub[sub[col] > ylim_max]
@@ -133,10 +117,7 @@ def main():
                     ax.scatter(over["alpha"], [ylim_max * 0.995] * len(over),
                                marker="^", s=55, color=color, zorder=6, clip_on=False)
 
-            if col in OPTIMA_PANELS:
-                series_data.setdefault(col, {})[label] = (sub, color)
-
-        # ── Axes formatting ───────────────────────────────────────────────
+        # Axes formatting
         if row == 1:
             ax.set_xlabel(r"$\lambda$", fontsize=_FS)
         else:
@@ -151,22 +132,23 @@ def main():
             ax.set_ylim(0.097, 0.131)
             ax.yaxis.set_major_locator(ticker.MultipleLocator(0.01))
             ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.002))
+
         elif col == 'Hd_MAE':
             ax.set_ylim(0.109, 0.137)
             ax.yaxis.set_major_locator(ticker.MultipleLocator(0.01))
             ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.002))
+
         elif col == "F1":
             ax.yaxis.set_major_locator(ticker.MultipleLocator(0.01))
             ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.002))
-            #ax.margins(y=0.08)
             ax.set_ylim(0.509,0.541)
+
         elif col == "rms_xi":
             ax.yaxis.set_major_locator(ticker.MultipleLocator(0.05))
             ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.01))
-            #ax.margins(y=0.08)
             ax.set_ylim(0.895, 1.115)
             ax.axhline(1.0, color='#6B7280', lw=0.9, ls=':', alpha=0.6,
-                       zorder=1, label=r'i.i.d. ($\xi_\mathrm{rms}=1$)')
+                       zorder=1, label=r'$\xi_\mathrm{rms}=1$')
 
         ax.grid(True, which="major", lw=0.4, alpha=0.5)
         ax.grid(True, which="minor", lw=0.2, alpha=0.3)
@@ -177,29 +159,8 @@ def main():
             bval = baseline_row[col].values[0]
             ax.axhline(bval, color="grey", lw=1.0, ls="-", alpha=0.8, zorder=1,
                        label=r"baseline ($\lambda\!=\!0$)")
-        """
-        # lambda* markers
-        if col in OPTIMA_PANELS and col in series_data:
-            direction = OPTIMA_PANELS[col]
-            for ser_label in OPTIMA_SERIES:
-                if ser_label not in series_data[col]:
-                    continue
-                sub, color = series_data[col][ser_label]
-                cand = sub[sub["alpha"] > 0]
-                if cand.empty:
-                    continue
-                best_idx = (cand[col].idxmax() if direction == "max"
-                            else cand[col].idxmin())
-                xv = cand.loc[best_idx, "alpha"]
-                yv = cand.loc[best_idx, col]
-                ax.scatter(xv, yv, marker="*", s=280, color=color,
-                           edgecolors="white", linewidths=0.6, zorder=6)
-                ax.annotate(r"$\mathbf{\lambda^*}$",
-                            xy=(xv, yv), xytext=(7, -12),
-                            textcoords="offset points",
-                            fontsize=_FS_SM, color=color, fontweight="bold")
-        """
-    # ── Legend ────────────────────────────────────────────────────────────
+
+    # Legend
     seen = {}
     for ax in axes:
         for h, l in zip(*ax.get_legend_handles_labels()):
@@ -208,7 +169,7 @@ def main():
 
     blank = Patch(visible=False)
     LEGEND_ORDER = [
-        "iiLoss", "iiLoss+PCGrad","HdLoss", "HdLoss+PCGrad", r"$\lambda=0.3$", r"baseline ($\lambda\!=\!0$)"
+        "iiLoss+PCGrad", "HdLoss+PCGrad", r"$\lambda=0.3$", r"baseline ($\lambda\!=\!0$)"
     ]
     ordered    = [seen[l] for l in LEGEND_ORDER if l in seen]
     labels_leg = [l.split('+')[0]       for l in LEGEND_ORDER if l in seen]
@@ -217,7 +178,7 @@ def main():
                fontsize=_FS_LEG, framealpha=0.9,
                bbox_to_anchor=(0.5, -0.08))
 
-    # ── Panel labels ──────────────────────────────────────────────────────
+    # Panel labels
     for ax, letter in zip(axes, ["a", "b", "c", "d"]):
         ax.text(-0.22, 1.05, letter, transform=ax.transAxes,
                 fontsize=_FS_PANEL, fontweight="bold", va="bottom", ha="left",
