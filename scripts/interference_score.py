@@ -415,7 +415,7 @@ def main():
     print(r"  lower $\xi$ = more error cancellation  |  Ed = derived decomposition enthalpy")
     print(r"  RMS $\xi=\sqrt{\langle\xi^2\rangle}$; statistical expectation: $\xi_\mathrm{rms}=1$ for i.i.d. residuals")
     print(sep)
-    print(col.format("Model", "N", "Ef MAE", "Ef RMSE", "Ed MAE", "Ed RMSE", "RMS $\xi$", "Median $\xi$", "F1"))
+    print(col.format("Model", "N", "Ef MAE", "Ef RMSE", "Ed MAE", "Ed RMSE", r"RMS $\xi$", "Median $\xi$", "F1"))
     print(sep)
     for model, s in summary.items():
         sc     = sorted(s["scores"])
