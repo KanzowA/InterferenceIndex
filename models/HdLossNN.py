@@ -1,38 +1,5 @@
 """
-HdLossNN — ElementFraction MLP trained with a normalised MSE + Hd² loss.
-
-Loss:
-    L = (1 − λ) · MSE_Hf / MSE_ref  +  λ · Hd² / Hd²_ref
-
-where
-    MSE_Hf  = mean_i( δ_i² )
-    Hd²     = mean_r( (Σ_k ω_k δ_k)² )   = mean_r( ΔA_obs² )
-
-Both terms are normalised by periodically-refreshed reference values so
-that the λ-weighting stays honest throughout training.
-
-Relationship to iiLossNN
-------------------------
-The ONLY difference between this model and iiLossNN is the reaction term:
-
-    iiLossNN :  ξ²   = (Σ ω_k δ_k)² / Σ (ω_k δ_k)²   [scale-invariant,  geometric]
-    HdLossNN :  Hd²  = (Σ ω_k δ_k)²                    [scale-dependent,  absolute]
-
-Everything else — architecture, optimiser, warmup schedule, renormalisation,
-gradient clipping, two-stage fine-tuning, PCGrad — is identical, so any
-difference in downstream performance is attributable solely to the choice
-of reaction term.
-
-Usage (single-stage):
-    python scripts/train_models.py allMP_2026 Hf HdLoss_0.1
-
-Usage (two-stage, same as iiLoss finetune):
-    # Stage 1: reuse iiLoss_save_0.0 checkpoints (pure MSE — identical)
-    # Stage 2:
-    python scripts/train_models.py allMP_2026 Hf HdLoss_finetune_0.1
-
-Usage (two-stage + PCGrad):
-    python scripts/train_models.py allMP_2026 Hf HdLoss_pcgrad_0.1
+HdLossNN — ElementFraction MLP trained with a normalised MSE + Hd^2 loss.
 """
 
 import os
@@ -47,16 +14,16 @@ from .iiLossNN import (
 
 class HdLossNN(iiLossNN):
     """
-    ElementFraction MLP with normalised Hd²-regularised loss.
+    ElementFraction MLP with normalised Hd^2-regularised loss.
 
     Parameters
     ----------
     target : str
         Regression target key ('Hf' or 'Hd').
     lam : float
-        Weight of Hd² loss term (0 = pure MSE, 1 = pure Hd²).
+        Weight of Hd^2 loss term (0 = pure MSE, 1 = pure Hd^2).
     eps : float
-        Stabiliser added to Hd²_ref denominator (eV²/atom²).
+        Stabiliser added to Hd^2_ref denominator (eV^2/atom^2).
     hidden : tuple of int
         Hidden layer widths. Default: (1024, 512, 256, 128).
     dropout : float
@@ -68,7 +35,7 @@ class HdLossNN(iiLossNN):
     warmup_frac : float
         Fraction of epochs to train with λ=0 (pure MSE warmup).
     renorm_every : int
-        Recompute MSE_ref and Hd²_ref every N epochs (0 = never after init).
+        Recompute MSE_ref and Hd^2_ref every N epochs (0 = never after init).
     grad_clip : float
         Max gradient norm (0 = no clipping).
     device : str or None
@@ -102,7 +69,7 @@ class HdLossNN(iiLossNN):
         renorm_every    = 50,
         grad_clip       = 1.0,
         device          = None,
-        # ── two-stage fine-tuning ──────────────────────────────────────────
+        # two-stage fine-tuning
         checkpoint_dir  = None,
         finetune_from   = None,
         finetune_lr     = 1e-4,
@@ -130,10 +97,10 @@ class HdLossNN(iiLossNN):
         )
         self.lam = lam
 
-    # ── reference computation ─────────────────────────────────────────────────
+    # reference computation
 
     def _compute_refs(self, X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev):
-        """Compute MSE_ref and Hd²_ref from current model predictions."""
+        """Compute MSE_ref and Hd^2_ref from current model predictions."""
         var_y = Y_t.var(unbiased=False).clamp(min=1e-6)
         with torch.no_grad():
             pred0   = self._net(X_t)
@@ -149,23 +116,23 @@ class HdLossNN(iiLossNN):
 
         return mse_ref, hd2_ref
 
-    # ── training loop ─────────────────────────────────────────────────────────
+    # training loop
 
     def fit(self, X, Y):
         dev = torch.device(self.device)
 
-        # ── fold tracking (for checkpoint filenames) ──────────────────────────
+        # fold tracking (for checkpoint filenames)
         fold_idx = self._fold_counter
         self._fold_counter += 1
 
-        # ── unpack index column ───────────────────────────────────────────────
+        # unpack index column
         train_indices = X[:, 0].astype(int)
         X_feat        = X[:, 1:].astype(np.float32)
 
         train_labels  = self._labels[train_indices]
         label_to_pos  = {lbl: i for i, lbl in enumerate(train_labels)}
 
-        # ── build reaction tensors ────────────────────────────────────────────
+        # build reaction tensors
         R_idx_list, R_coeff_list, R_mask_list = [], [], []
 
         for lbl in train_labels:
@@ -174,11 +141,10 @@ class HdLossNN(iiLossNN):
             if not rxn_str:
                 continue
             pairs = _parse_rxn(rxn_str, label_to_pos)
-            # Prepend reactant with coefficient -1 so that
-            # Σ(weight_i · δ_i) == Hd_DFT − Hd_ML (matches evaluation)
+            # Prepend reactant with coefficient -1
             pairs.insert(0, (label_to_pos[lbl], -1.0))
             if len(pairs) < 2:
-                # Only reactant, no non-elemental products → Hd undefined
+                # Only reactant, no non-elemental products -> Hd undefined
                 continue
 
             idx_row   = [p[0] for p in pairs]
@@ -203,11 +169,11 @@ class HdLossNN(iiLossNN):
             has_rxn = False
             print("  [HdLossNN] Warning: no reactions in fold — pure MSE.")
 
-        # ── network ───────────────────────────────────────────────────────────
+        # Network
         input_dim = X_feat.shape[1]
         self._net = _ResidualMLP(input_dim, self.hidden, self.dropout).to(dev)
 
-        # ── stage-2: load pretrained weights if fine-tuning ───────────────────
+        # Stage-2: load pretrained weights if fine-tuning
         if self.finetune_from is not None:
             ckpt_path = os.path.join(
                 self.finetune_from, f"{self.target}_fold{fold_idx}.pt")
@@ -227,7 +193,7 @@ class HdLossNN(iiLossNN):
             actual_warmup  = self.warmup_frac
             actual_renorm  = self.renorm_every
 
-        # ── optimiser & scheduler ─────────────────────────────────────────────
+        # Optimiser & Scheduler
         optimizer = torch.optim.Adam(
             self._net.parameters(), lr=actual_lr, weight_decay=1e-4
         )
@@ -238,7 +204,7 @@ class HdLossNN(iiLossNN):
         X_t = torch.tensor(X_feat, dtype=torch.float32, device=dev)
         Y_t = torch.tensor(Y,      dtype=torch.float32, device=dev)
 
-        # ── warmup schedule ───────────────────────────────────────────────────
+        # Warmup schedule
         warmup_end = int(actual_warmup * actual_epochs)
         ramp_end   = int(2 * actual_warmup * actual_epochs)
 
@@ -249,7 +215,7 @@ class HdLossNN(iiLossNN):
                 return self.lam * (epoch - warmup_end) / max(ramp_end - warmup_end, 1)
             return self.lam
 
-        # ── initial reference values (calibrated at checkpoint, not random init)
+        # initial reference values (calibrated at checkpoint, not random init)
         mse_ref, hd2_ref = self._compute_refs(
             X_t, Y_t, R_idx if has_rxn else None,
             R_coeff if has_rxn else None,
@@ -257,7 +223,7 @@ class HdLossNN(iiLossNN):
             has_rxn, dev
         )
 
-        # ── training loop (full-batch) ────────────────────────────────────────
+        # Training loop (full-batch)
         self._net.train()
         for epoch in range(actual_epochs):
 
@@ -274,7 +240,7 @@ class HdLossNN(iiLossNN):
 
             lam_eff = effective_lam(epoch)
 
-            # ── PCGrad path ───────────────────────────────────────────────────
+            # PCGrad path
             if self.use_pcgrad and has_rxn and lam_eff > 0:
 
                 # MSE gradient
@@ -286,7 +252,7 @@ class HdLossNN(iiLossNN):
                          if p.grad is not None else torch.zeros_like(p)
                          for p in self._net.parameters()]
 
-                # Hd² gradient
+                # Hd^2 gradient
                 optimizer.zero_grad()
                 pred  = self._net(X_t); delta = pred - Y_t
                 c        = R_coeff * delta[R_idx] * R_mask
@@ -297,7 +263,7 @@ class HdLossNN(iiLossNN):
                         if p.grad is not None else torch.zeros_like(p)
                         for p in self._net.parameters()]
 
-                # Project g_ed ⊥ g_mse
+                # Project g_Hd orthogonal to g_mse
                 dot   = sum((a * b).sum() for a, b in zip(g_ed,  g_mse))
                 norm2 = sum((b * b).sum() for b in g_mse).clamp(min=1e-12)
                 g_ed_proj = [a - (dot / norm2) * b
@@ -316,7 +282,7 @@ class HdLossNN(iiLossNN):
                 loss     = mse_loss  # for logging
                 ed_log   = ed_loss
 
-            # ── standard path ─────────────────────────────────────────────────
+            # standard path
             else:
                 optimizer.zero_grad()
                 pred  = self._net(X_t)
@@ -358,7 +324,7 @@ class HdLossNN(iiLossNN):
 
         self._net.eval()
 
-        # ── stage-1: save checkpoint ──────────────────────────────────────────
+        # Stage-1: Save checkpoint
         if self.checkpoint_dir is not None:
             os.makedirs(self.checkpoint_dir, exist_ok=True)
             ckpt_path = os.path.join(

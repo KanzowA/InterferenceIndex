@@ -1,30 +1,5 @@
 """
-iiLossNN — ElementFraction MLP trained with a normalised MSE + ξ² loss.
-
-Loss:
-    L = (1 − λ) · MSE_Hf / MSE_ref  +  λ · ξ² / ξ²_ref
-
-where MSE_ref and ξ²_ref are periodically refreshed reference values so that
-the λ-weighting is reinstated during training, not just at epoch 0.
-
-Architecture:
-    ResidualMLP — input → projection → ResBlock × L → output
-    LayerNorm (no running stats, works cleanly with full-batch and at eval time).
-    Skip connections at every layer so the subtle ξ² gradient signal
-    has short paths back to early weights.
-
-Training improvements:
-    warmup_frac  — first fraction of epochs trains with pure MSE (λ=0),
-                   giving Hf accuracy a head start before ξ² steers.
-    renorm_every — recompute MSE_ref and ξ²_ref every N epochs so the
-                   λ fractional weighting stays honest as MSE decays.
-    grad_clip    — clip gradient norm to stabilise the coupled ξ² updates.
-
-Called by (λ = 0.1):
-    python scripts/train_models.py allMP_2026 Hf iiLoss_0.1
-
-Metrics:
-    python scripts/interference_score.py 2026
+iiLossNN — ElementFraction MLP trained with a normalised MSE + xi^2 loss.
 """
 
 import os
@@ -40,18 +15,9 @@ except ImportError:
 
 from matminer.featurizers.composition import ElementFraction
 
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 MAX_RXN_SIZE = 10
 
-
-# ---------------------------------------------------------------------------
-# Formula helpers (mirror interference_score.py — kept local to avoid
-# circular imports)
-# ---------------------------------------------------------------------------
+# Formula helpers
 
 def _num_atoms(formula: str) -> int:
     """Total atom count for a formula string, e.g. 'Ac1Ag3' → 4."""
@@ -64,9 +30,8 @@ def _is_element(formula: str) -> bool:
     symbols = re.findall(r'[A-Z][a-z]?', formula)
     return len(set(symbols)) == 1
 
-# ---------------------------------------------------------------------------
+
 # Architecture
-# ---------------------------------------------------------------------------
 
 class _ResBlock(nn.Module):
     """
@@ -132,9 +97,7 @@ class _ResidualMLP(nn.Module):
         return self.out(x).squeeze(1)
 
 
-# ---------------------------------------------------------------------------
 # iiLossNN
-# ---------------------------------------------------------------------------
 
 class iiLossNN(nn.Module):
     """
@@ -189,9 +152,9 @@ class iiLossNN(nn.Module):
         # ── Two-stage fine-tuning ──────────────────────────────────────────
         checkpoint_dir  = None,   # save per-fold weights here after training
         finetune_from   = None,   # load per-fold weights from here (stage 2)
-        finetune_lr     = 1e-4,   # LR for fine-tuning (lower than stage-1)
+        finetune_lr     = 1e-4,   # LR for fine-tuning (lower than stage 1)
         finetune_epochs = 200,    # epochs for fine-tuning
-        use_pcgrad      = False,  # gradient surgery: project ξ² ⊥ MSE each step
+        use_pcgrad      = False,  # gradient surgery: project xi^2 orthogonal to MSE
     ):
         super().__init__()
         self.target          = target
@@ -215,11 +178,10 @@ class iiLossNN(nn.Module):
         self._labels      = None
         self._data        = None
         self._net         = None
-        self._fold_counter = 0   # incremented each fit() call to track fold index
+        self._fold_counter = 0
 
-    # ------------------------------------------------------------------
     # MLModel interface
-    # ------------------------------------------------------------------
+
     def preprocess(self, X):
         """
         Featurise with ElementFraction.
@@ -253,18 +215,18 @@ class iiLossNN(nn.Module):
     def fit(self, X, Y):
         dev = torch.device(self.device)
 
-        # -- Track fold index ----------------------------------------------
+        # Track fold index
         fold_idx = self._fold_counter
         self._fold_counter += 1
 
-        # -- Unpack index column -------------------------------------------
+        # Unpack index column
         train_indices = X[:, 0].astype(int)
         X_feat        = X[:, 1:].astype(np.float32)
 
         train_labels  = self._labels[train_indices]
         label_to_pos  = {lbl: i for i, lbl in enumerate(train_labels)}
 
-        # -- Build reaction tensors ----------------------------------------
+        # Build reaction tensors
         R_idx_list, R_coeff_list, R_mask_list = [], [], []
 
         for lbl in train_labels:
@@ -274,7 +236,6 @@ class iiLossNN(nn.Module):
                 continue
             pairs = _parse_rxn(rxn_str, label_to_pos)
             # Prepend reactant with coefficient -1 so that
-            # Σ(weight_i · δ_i) == Hd_DFT − Hd_ML (matches evaluation)
             pairs.insert(0, (label_to_pos[lbl], -1.0))
             if len(pairs) < 2:
                 # Only reactant, no non-elemental products → Hd undefined
@@ -302,11 +263,11 @@ class iiLossNN(nn.Module):
             has_rxn = False
             print("  [iiLossNN] Warning: no reactions in fold — pure MSE.")
 
-        # -- Network -------------------------------------------------------
+        # Network
         input_dim = X_feat.shape[1]
         self._net = _ResidualMLP(input_dim, self.hidden, self.dropout).to(dev)
 
-        # -- Two-stage: load pretrained weights if fine-tuning -------------
+        # Two-stage: load pretrained weights if fine-tuning
         is_finetune = self.finetune_from is not None
         if is_finetune:
             ckpt_path = os.path.join(self.finetune_from,
@@ -350,9 +311,8 @@ class iiLossNN(nn.Module):
                 return self.lam * (epoch - warmup_end) / max(ramp_end - warmup_end, 1)
             return self.lam
 
-        # -- Reference values (set from current model state) ---------------
-        # For fine-tuning: model is pretrained, so refs are calibrated to
-        # the converged solution — both terms start at 1.0 and stay balanced.
+        # Reference values (set from current model state)
+        # For fine-tuning: model is pretrained
         mse_ref, xi2_ref = self._compute_refs(
             X_t, Y_t,
             R_idx   if has_rxn else None,
@@ -361,7 +321,7 @@ class iiLossNN(nn.Module):
             has_rxn, dev,
         )
 
-        # -- Training loop (full-batch) ------------------------------------
+        # Training loop (full-batch)
         self._net.train()
         for epoch in range(actual_epochs):
 
@@ -380,7 +340,7 @@ class iiLossNN(nn.Module):
             lam_eff = effective_lam(epoch)
 
             if self.use_pcgrad and has_rxn and lam_eff > 0:
-                # ── PCGrad: two separate backward passes, then project ─────
+                # PCGrad: two separate backward passes, then project
                 # Pass 1: MSE gradient
                 optimizer.zero_grad()
                 pred      = self._net(X_t)
@@ -391,7 +351,7 @@ class iiLossNN(nn.Module):
                          else torch.zeros_like(p)
                          for p in self._net.parameters()]
 
-                # Pass 2: ξ² gradient
+                # Pass 2: ii^2 gradient
                 optimizer.zero_grad()
                 pred      = self._net(X_t)
                 delta     = pred - Y_t
@@ -404,7 +364,7 @@ class iiLossNN(nn.Module):
                         else torch.zeros_like(p)
                         for p in self._net.parameters()]
 
-                # Project g_xi orthogonal to g_mse (per-step, exact at current θ)
+                # Project g_xi orthogonal to g_mse (per-step, exact at current state)
                 dot   = sum((a * b).sum() for a, b in zip(g_xi, g_mse))
                 norm2 = sum((b * b).sum() for b in g_mse).clamp(min=1e-12)
                 g_xi_proj = [a - (dot / norm2) * b for a, b in zip(g_xi, g_mse)]
@@ -455,7 +415,7 @@ class iiLossNN(nn.Module):
 
         self._net.eval()
 
-        # -- Save checkpoint (stage 1) -------------------------------------
+        # Save checkpoint (stage 1)
         if self.checkpoint_dir is not None:
             os.makedirs(self.checkpoint_dir, exist_ok=True)
             ckpt_path = os.path.join(self.checkpoint_dir,
@@ -478,13 +438,13 @@ class iiLossNN(nn.Module):
         """
         return self.fit(Xtrain, Ytrain).predict(Xtest)
 
-    # ------------------------------------------------------------------
+
     # Internal helpers
-    # ------------------------------------------------------------------
+
     def _compute_refs(self, X_t, Y_t, R_idx, R_coeff, R_mask,
                       has_rxn, dev):
         """
-        Compute fresh MSE_ref and ξ²_ref from current model predictions.
+        Compute fresh MSE_ref and xi²_ref from current model predictions.
         Called at epoch 0 and every renorm_every epochs so that the
         (1-λ)/λ weighting stays calibrated as MSE decays during training.
         """
@@ -505,9 +465,7 @@ class iiLossNN(nn.Module):
         return mse_ref, xi2_ref
 
 
-# ---------------------------------------------------------------------------
 # Helper
-# ---------------------------------------------------------------------------
 
 def _parse_rxn(rxn_str, label_to_pos):
     """
@@ -515,13 +473,6 @@ def _parse_rxn(rxn_str, label_to_pos):
     '0.6667_Ac + 0.3333_Ac1Ag3', into [(position, weight), ...].
 
     Elements are skipped (Hf = 0 by definition, excluded in evaluation).
-
-    The 2026 hullout stores coefficients that are ALREADY per-atom weights
-    (v_k * N_k / N_c), so we use them directly without additional normalisation.
-    The 2020 hullout would require N_k/N_c, but all NN training uses 2026 data.
-
-    Note: the reactant itself is NOT added here — callers must prepend it
-    with coefficient -1.0 so that sum(weights * deltas) == Hd_DFT - Hd_ML.
     """
     pairs = []
     for token in rxn_str.split('+'):
