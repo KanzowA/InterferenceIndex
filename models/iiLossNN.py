@@ -3,6 +3,7 @@ iiLossNN - ElementFraction MLP trained with a normalised MSE + xi^2 loss.
 """
 
 import os
+import random
 import re
 
 import numpy as np
@@ -119,6 +120,8 @@ class iiLossNN(nn.Module):
         Epoch count used when fine-tuning.
     use_pcgrad : bool
         Project the xi^2 gradient orthogonal to the MSE gradient each step.
+    seed : int
+        Base seed. Each fold derives its own RNG state from (seed, fold).
     """
 
     model_type = "ii_nn"
@@ -141,6 +144,7 @@ class iiLossNN(nn.Module):
         finetune_lr     = 1e-4,
         finetune_epochs = 200,
         use_pcgrad      = False,
+        seed            = 0,
     ):
         super().__init__()
         self.target          = target
@@ -160,6 +164,7 @@ class iiLossNN(nn.Module):
         self.finetune_lr     = finetune_lr
         self.finetune_epochs = finetune_epochs
         self.use_pcgrad      = use_pcgrad
+        self.seed            = seed
 
         self._labels      = None
         self._data        = None
@@ -203,6 +208,9 @@ class iiLossNN(nn.Module):
 
         fold_idx = self._fold_counter
         self._fold_counter += 1
+
+        # Must precede network construction, which consumes the RNG.
+        self._seed_fold(fold_idx)
 
         train_indices = X[:, 0].astype(int)
         X_feat        = X[:, 1:].astype(np.float32)
@@ -252,7 +260,7 @@ class iiLossNN(nn.Module):
         is_finetune = self.finetune_from is not None
         if is_finetune:
             ckpt_path = os.path.join(self.finetune_from,
-                                     f"{self.target}_fold{fold_idx}.pt")
+                                     f"{self.target}_fold{fold_idx}_seed{self.seed}.pt")
             state = torch.load(ckpt_path, map_location=dev)
             self._net.load_state_dict(state)
             print(f"  [iiLossNN] Loaded pretrained weights: {ckpt_path}")
@@ -391,7 +399,7 @@ class iiLossNN(nn.Module):
         if self.checkpoint_dir is not None:
             os.makedirs(self.checkpoint_dir, exist_ok=True)
             ckpt_path = os.path.join(self.checkpoint_dir,
-                                     f"{self.target}_fold{fold_idx}.pt")
+                                     f"{self.target}_fold{fold_idx}_seed{self.seed}.pt")
             torch.save(self._net.state_dict(), ckpt_path)
             print(f"  [iiLossNN] Saved checkpoint: {ckpt_path}")
 
@@ -410,6 +418,20 @@ class iiLossNN(nn.Module):
 
 
     # -- Internal helpers -------------------------------------------------
+
+    def _seed_fold(self, fold_idx):
+        """Seed every RNG this fold will draw from.
+
+        SeedSequence hashes the (seed, fold) pair into a statistically
+        independent stream, so folds do not share an initialisation and
+        distinct base seeds cannot collide.
+        """
+        entropy = int(np.random.SeedSequence([self.seed, fold_idx])
+                      .generate_state(1, dtype=np.uint32)[0])
+        random.seed(entropy)
+        np.random.seed(entropy)
+        torch.manual_seed(entropy)
+        torch.cuda.manual_seed_all(entropy)
 
     def _compute_refs(self, X_t, Y_t, R_idx, R_coeff, R_mask,
                       has_rxn, dev):

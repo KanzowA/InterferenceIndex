@@ -48,6 +48,8 @@ class HdLossNN(iiLossNN):
         Epoch count used when fine-tuning.
     use_pcgrad : bool
         Project the Hd^2 gradient orthogonal to the MSE gradient each step.
+    seed : int
+        Base seed. Each fold derives its own RNG state from (seed, fold).
     """
 
     model_type = "ed_nn"
@@ -71,6 +73,7 @@ class HdLossNN(iiLossNN):
         finetune_lr     = 1e-4,
         finetune_epochs = 200,
         use_pcgrad      = False,
+        seed            = 0,
     ):
         # Initialise via iiLossNN with lam=0; finetune params stored on self
         super().__init__(
@@ -90,6 +93,7 @@ class HdLossNN(iiLossNN):
             finetune_lr     = finetune_lr,
             finetune_epochs = finetune_epochs,
             use_pcgrad      = use_pcgrad,
+            seed            = seed,
         )
         self.lam = lam
 
@@ -119,6 +123,9 @@ class HdLossNN(iiLossNN):
 
         fold_idx = self._fold_counter
         self._fold_counter += 1
+
+        # Must precede network construction, which consumes the RNG.
+        self._seed_fold(fold_idx)
 
         train_indices = X[:, 0].astype(int)
         X_feat        = X[:, 1:].astype(np.float32)
@@ -169,7 +176,7 @@ class HdLossNN(iiLossNN):
         # Stage-2: load pretrained weights if fine-tuning
         if self.finetune_from is not None:
             ckpt_path = os.path.join(
-                self.finetune_from, f"{self.target}_fold{fold_idx}.pt")
+                self.finetune_from, f"{self.target}_fold{fold_idx}_seed{self.seed}.pt")
             if os.path.exists(ckpt_path):
                 state = torch.load(ckpt_path, map_location=dev)
                 self._net.load_state_dict(state)
@@ -320,7 +327,7 @@ class HdLossNN(iiLossNN):
         if self.checkpoint_dir is not None:
             os.makedirs(self.checkpoint_dir, exist_ok=True)
             ckpt_path = os.path.join(
-                self.checkpoint_dir, f"{self.target}_fold{fold_idx}.pt")
+                self.checkpoint_dir, f"{self.target}_fold{fold_idx}_seed{self.seed}.pt")
             torch.save(self._net.state_dict(), ckpt_path)
             print(f"  [HdLossNN] saved checkpoint: {ckpt_path}")
 

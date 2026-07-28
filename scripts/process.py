@@ -30,8 +30,8 @@ class _ModelDict(dict):
         if key.startswith("iiLoss_save_"):
             try:
                 lam = float(key.split("_", 2)[2])
-                return lambda target, l=lam: iiLossNN(
-                    target, lam=l,
+                return lambda target, seed=0, l=lam: iiLossNN(
+                    target, lam=l, seed=seed,
                     checkpoint_dir=os.path.join(_CHECKPOINT_DIR, target),
                 )
             except (ValueError, IndexError):
@@ -40,8 +40,8 @@ class _ModelDict(dict):
         if key.startswith("iiLoss_finetune_"):
             try:
                 lam = float(key.split("_", 2)[2])
-                return lambda target, l=lam: iiLossNN(
-                    target, lam=l,
+                return lambda target, seed=0, l=lam: iiLossNN(
+                    target, lam=l, seed=seed,
                     finetune_from=os.path.join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -54,8 +54,8 @@ class _ModelDict(dict):
         if key.startswith("iiLoss_pcgrad_"):
             try:
                 lam = float(key.rsplit("_", 1)[1])
-                return lambda target, l=lam: iiLossNN(
-                    target, lam=l,
+                return lambda target, seed=0, l=lam: iiLossNN(
+                    target, lam=l, seed=seed,
                     finetune_from=os.path.join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -69,15 +69,15 @@ class _ModelDict(dict):
         if key.startswith("iiLoss_"):
             try:
                 lam = float(key.split("_", 1)[1])
-                return lambda target, l=lam: iiLossNN(target, lam=l)
+                return lambda target, seed=0, l=lam: iiLossNN(target, lam=l, seed=seed)
             except ValueError:
                 pass
         # Stage 2: reload the MSE checkpoint and fine-tune with Hd^2.
         if key.startswith("HdLoss_finetune_"):
             try:
                 alpha = float(key.split("_", 2)[2])
-                return lambda target, a=alpha: HdLossNN(
-                    target, lam=a,
+                return lambda target, seed=0, a=alpha: HdLossNN(
+                    target, lam=a, seed=seed,
                     finetune_from=os.path.join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -90,8 +90,8 @@ class _ModelDict(dict):
         if key.startswith("HdLoss_pcgrad_"):
             try:
                 alpha = float(key.rsplit("_", 1)[1])
-                return lambda target, a=alpha: HdLossNN(
-                    target, lam=a,
+                return lambda target, seed=0, a=alpha: HdLossNN(
+                    target, lam=a, seed=seed,
                     finetune_from=os.path.join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -105,7 +105,7 @@ class _ModelDict(dict):
         if key.startswith("HdLoss_"):
             try:
                 alpha = float(key.split("_", 1)[1])
-                return lambda target, a=alpha: HdLossNN(target, lam=a)
+                return lambda target, seed=0, a=alpha: HdLossNN(target, lam=a, seed=seed)
             except ValueError:
                 pass
         known = list(self.keys()) + ["iiLoss_<lam>", "iiLoss_save_<lam>",

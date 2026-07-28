@@ -2,11 +2,11 @@
 
 Usage
 -----
-    python scripts/train_models.py <problem> <target> <model>
-    python scripts/train_models.py allMP_2026 Hf iiLoss_pcgrad_0.3
+    python scripts/train_models.py <problem> <target> <model> [seed]
+    python scripts/train_models.py allMP_2026 Hf iiLoss_pcgrad_0.3 0
 
-Predictions are written to data/<year>/ml/<target>/<model>/ml_input.json in the
-format the hull analysis expects.
+Predictions are written to data/<year>/ml/<target>/<model>_s<seed>/ml_input.json
+in the format the hull analysis expects. The seed defaults to 0.
 """
 
 import json
@@ -29,7 +29,13 @@ def main(argv):
         target = argv[2]
         model_name = argv[3]
     except IndexError:
-        print("Arguments should be Problem Target Model")
+        print("Arguments should be Problem Target Model [Seed]")
+        exit(1)
+
+    try:
+        seed = int(argv[4]) if len(argv) > 4 else 0
+    except ValueError:
+        print(f"Seed must be an integer, got {argv[4]}")
         exit(1)
 
     try:
@@ -47,17 +53,19 @@ def main(argv):
         exit(1)
 
     try:
-        model = MODEL_DICTIONARY[model_name](target)
+        model = MODEL_DICTIONARY[model_name](target, seed)
     except KeyError:
         choices = ", ".join(MODEL_DICTIONARY.keys())
         print(f"Invalid model selection. Valid choices are {choices}")
         exit(1)
 
     year = "2026" if "2026" in problem else "2020"
-    output_dir = os.path.join(REPO_ROOT, "data", year, "ml", target, model_name)
+    run_name = f"{model_name}_s{seed}"
+    output_dir = os.path.join(REPO_ROOT, "data", year, "ml", target, run_name)
     output_file = os.path.join(output_dir, "ml_input.json")
 
-    print(f"Training {model_name} to predict {target} using the {problem} dataset")
+    print(f"Training {model_name} to predict {target} using the {problem} "
+          f"dataset (seed {seed})")
 
     predictions = train_func(model, target)
 

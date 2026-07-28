@@ -209,17 +209,31 @@ def main():
 
     global MODELS
 
+    def _split_variant(name):
+        """Split a run name into (family, lam, seed).
+
+        Runs are named <family>_<lam> with an optional _s<seed> suffix, so
+        both "iiLoss_pcgrad_0.3" and "iiLoss_pcgrad_0.3_s2" are accepted.
+        Raises ValueError if the lam field is not numeric.
+        """
+        stem, seed = name, -1
+        head, _, tail = name.rpartition("_")
+        if tail.startswith("s") and tail[1:].isdigit():
+            stem, seed = head, int(tail[1:])
+        family, _, lam = stem.rpartition("_")
+        return family, float(lam), seed
+
     def _detect_variants(prefix, ml_dir):
         variants = []
         if os.path.isdir(ml_dir):
             for name in os.listdir(ml_dir):
                 if name.startswith(prefix) and os.path.isdir(os.path.join(ml_dir, name)):
                     try:
-                        float(name.rsplit("_", 1)[1])  # handles iiLoss_finetune_0.1 etc.
+                        _split_variant(name)
                         variants.append(name)
                     except ValueError:
                         pass
-        variants.sort(key=lambda n: (n.rsplit("_", 1)[0], float(n.rsplit("_", 1)[1])))
+        variants.sort(key=_split_variant)
         return variants
 
     ii_variants = _detect_variants("iiLoss_", ML_DIR)
