@@ -1,112 +1,113 @@
 #!/bin/bash
-# sweep.sh — Full hyperparameter sweep over all 4 model variants.
+# Full training sweep over lam and model variant, for one or more seeds.
 #
-# Structure (42 runs total):
-#   [1/42]  λ=0.0  →  iiLoss_save_0.0  (MSE baseline + checkpoints)
-#                      output copied to iiLoss_0.0 and HdLoss_0.0
-#   [2/42]  λ=0.0  →  iiLoss_finetune_0.0  (MSE fine-tune control, 500+200 epochs)
-#                      output copied to HdLoss_finetune_0.0
-#                      serves as λ=0 anchor for PCGrad curves in Fig. 6
-#   [3..42] λ=0.1..1.0  ×  {iiLoss, iiLoss_pcgrad, HdLoss, HdLoss_pcgrad}
+# Per seed:
+#   [1] iiLoss_save_0.0      stage 1, pure MSE, writes the per-fold checkpoints
+#                            that every stage-2 run for this seed reloads.
+#                            Output is copied to iiLoss_0.0 and HdLoss_0.0.
+#   [2] iiLoss_finetune_0.0  matched lam=0 control (500+200 epochs). This is the
+#                            anchor the lam>0 fine-tuned runs must be compared
+#                            against; the stage-1 baseline is not, because it
+#                            has seen 200 fewer epochs.
+#   [3..] lam = 0.1 .. 1.0 crossed with VARIANTS.
 #
 # Usage:
-#   bash sweep.sh        # target: Hf (default)
-#   bash sweep.sh Hd     # target: Hd
+#   bash scripts/sweep.sh                # target Hf, seed 0
+#   bash scripts/sweep.sh Hf 0 1 2       # target Hf, three seeds
 #
-# Prerequisites:
-#   - conda environment 'interference' (see environment.yml)
-#   - GPU recommended; set CUDA_VISIBLE_DEVICES=0 if needed
+# Requires the 'interference' conda environment to be active.
+
+set -u
 
 TARGET=${1:-Hf}
+shift || true
+SEEDS=("$@")
+[[ ${#SEEDS[@]} -eq 0 ]] && SEEDS=(0)
+
 SPLIT="allMP_2026"
 VALUES=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
-VARIANTS=(iiLoss iiLoss_pcgrad HdLoss HdLoss_pcgrad)
 
-# ── Environment ───────────────────────────────────────────────────────────────
-source ~/miniconda3/etc/profile.d/conda.sh 2>/dev/null && conda activate interference 2>/dev/null
-PYTHON=$(which python 2>/dev/null || which python3)
+# Two-stage variants only, so surgery-vs-no-surgery is a controlled comparison:
+# *_pcgrad and *_finetune differ solely in the gradient projection.
+# Add iiLoss / HdLoss here to include the single-stage runs as well.
+VARIANTS=(iiLoss_pcgrad iiLoss_finetune HdLoss_pcgrad HdLoss_finetune)
+
+PYTHON=$(command -v python)
+if [[ -z "${PYTHON}" ]]; then
+    echo "ERROR: no python on PATH. Activate the environment first:"
+    echo "    conda activate interference"
+    exit 1
+fi
+if ! "$PYTHON" -c "import torch" 2>/dev/null; then
+    echo "ERROR: torch not importable. Activate the environment first:"
+    echo "    conda activate interference"
+    exit 1
+fi
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
+PER_SEED=$(( 2 + ${#VALUES[@]} * ${#VARIANTS[@]} ))
+TOTAL=$(( PER_SEED * ${#SEEDS[@]} ))
+
 mkdir -p logs
-LOGFILE="logs/sweep_full_${TARGET}.log"
+LOGFILE="logs/sweep_${TARGET}_$(date +%Y%m%d_%H%M%S).log"
 ML_DIR="data/2026/ml/${TARGET}"
 
-echo "============================================================" | tee "$LOGFILE"
-echo "  Full sweep — target: ${TARGET} — 42 runs"                  | tee -a "$LOGFILE"
-echo "  Python: $PYTHON ($($PYTHON --version 2>&1))"               | tee -a "$LOGFILE"
-echo "  Started: $(date)"                                           | tee -a "$LOGFILE"
-echo "============================================================" | tee -a "$LOGFILE"
+log() { echo "$@" | tee -a "$LOGFILE"; }
 
-# ── [1/42] λ=0.0 — MSE baseline, saves checkpoints ──────────────────────────
-echo "" | tee -a "$LOGFILE"
-echo "[1/42]  iiLoss_save_0.0  (λ=0, MSE baseline + checkpoints)  ($(date))" | tee -a "$LOGFILE"
-echo "-----------------------------------------------------" | tee -a "$LOGFILE"
+log "============================================================"
+log "  Sweep: target ${TARGET}, seeds ${SEEDS[*]}"
+log "  ${PER_SEED} runs per seed, ${TOTAL} total"
+log "  Python: $PYTHON ($($PYTHON --version 2>&1))"
+log "  Started: $(date)"
+log "============================================================"
 
-$PYTHON -u scripts/train_models.py "$SPLIT" "$TARGET" iiLoss_save_0.0 \
-    2>&1 | tee -a "$LOGFILE"
+IDX=1
 
-if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-    echo "ERROR: λ=0 baseline failed — aborting." | tee -a "$LOGFILE"
-    exit 1
-fi
+run() {   # run <model> <seed>
+    local model=$1 seed=$2
+    log ""
+    log "[${IDX}/${TOTAL}]  ${model}  seed ${seed}  ($(date))"
+    log "-----------------------------------------------------"
+    "$PYTHON" -u scripts/train_models.py "$SPLIT" "$TARGET" "$model" "$seed" 2>&1 | tee -a "$LOGFILE"
+    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+        log "ERROR: ${model} seed ${seed} failed - stopping."
+        exit 1
+    fi
+    log "[DONE] ${model} seed ${seed} at $(date)"
+    IDX=$(( IDX + 1 ))
+}
 
-# Copy λ=0 predictions to iiLoss_0.0 and HdLoss_0.0 (identical: pure MSE)
-for DIR in iiLoss_0.0 HdLoss_0.0; do
-    mkdir -p "${ML_DIR}/${DIR}"
-    cp "${ML_DIR}/iiLoss_save_0.0/ml_input.json" "${ML_DIR}/${DIR}/ml_input.json"
-    echo "  → copied λ=0 predictions to ${DIR}" | tee -a "$LOGFILE"
-done
-rm -rf "${ML_DIR}/iiLoss_save_0.0"
-echo "  → removed iiLoss_save_0.0 from ML_DIR (checkpoints kept)" | tee -a "$LOGFILE"
-echo "[DONE] λ=0 baseline at $(date)" | tee -a "$LOGFILE"
+for SEED in "${SEEDS[@]}"; do
 
-# ── [2/42] λ=0.0 fine-tune control — λ=0 anchor for PCGrad curves ────────────
-echo "" | tee -a "$LOGFILE"
-echo "[2/42]  iiLoss_finetune_0.0  (λ=0, MSE fine-tune control, 500+200 epochs)  ($(date))" | tee -a "$LOGFILE"
-echo "-----------------------------------------------------" | tee -a "$LOGFILE"
+    # Stage 1. Checkpoints are written per seed, so seeds do not clobber
+    # each other and may be run in any order.
+    run iiLoss_save_0.0 "$SEED"
+    for DIR in iiLoss_0.0 HdLoss_0.0; do
+        mkdir -p "${ML_DIR}/${DIR}_s${SEED}"
+        cp "${ML_DIR}/iiLoss_save_0.0_s${SEED}/ml_input.json" \
+           "${ML_DIR}/${DIR}_s${SEED}/ml_input.json"
+        log "  copied stage-1 predictions to ${DIR}_s${SEED}"
+    done
+    rm -rf "${ML_DIR}/iiLoss_save_0.0_s${SEED}"
 
-$PYTHON -u scripts/train_models.py "$SPLIT" "$TARGET" iiLoss_finetune_0.0 \
-    2>&1 | tee -a "$LOGFILE"
+    # Matched lam=0 control.
+    run iiLoss_finetune_0.0 "$SEED"
+    mkdir -p "${ML_DIR}/HdLoss_finetune_0.0_s${SEED}"
+    cp "${ML_DIR}/iiLoss_finetune_0.0_s${SEED}/ml_input.json" \
+       "${ML_DIR}/HdLoss_finetune_0.0_s${SEED}/ml_input.json"
+    log "  copied control predictions to HdLoss_finetune_0.0_s${SEED}"
 
-if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-    echo "ERROR: iiLoss_finetune_0.0 failed — aborting." | tee -a "$LOGFILE"
-    exit 1
-fi
-
-# Copy to HdLoss_finetune_0.0 (lam=0 → identical regardless of model class)
-mkdir -p "${ML_DIR}/HdLoss_finetune_0.0"
-cp "${ML_DIR}/iiLoss_finetune_0.0/ml_input.json" \
-   "${ML_DIR}/HdLoss_finetune_0.0/ml_input.json"
-echo "  → copied finetune λ=0 predictions to HdLoss_finetune_0.0" | tee -a "$LOGFILE"
-echo "[DONE] finetune λ=0 control at $(date)" | tee -a "$LOGFILE"
-
-# ── [3..42] λ=0.1..1.0 × 4 variants ─────────────────────────────────────────
-IDX=3
-
-for VAL in "${VALUES[@]}"; do
-    for VARIANT in "${VARIANTS[@]}"; do
-
-        MODEL="${VARIANT}_${VAL}"   # e.g. iiLoss_0.1, iiLoss_pcgrad_0.1
-
-        echo "" | tee -a "$LOGFILE"
-        echo "[${IDX}/42]  ${MODEL}  ($(date))" | tee -a "$LOGFILE"
-        echo "-----------------------------------------------------" | tee -a "$LOGFILE"
-
-        $PYTHON -u scripts/train_models.py "$SPLIT" "$TARGET" "$MODEL" \
-            2>&1 | tee -a "$LOGFILE"
-
-        if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-            echo "ERROR: ${MODEL} failed — stopping." | tee -a "$LOGFILE"
-            exit 1
-        fi
-        echo "[DONE] ${MODEL} at $(date)" | tee -a "$LOGFILE"
-        ((IDX++))
+    for VAL in "${VALUES[@]}"; do
+        for VARIANT in "${VARIANTS[@]}"; do
+            run "${VARIANT}_${VAL}" "$SEED"
+        done
     done
 done
 
-echo "" | tee -a "$LOGFILE"
-echo "============================================================" | tee -a "$LOGFILE"
-echo "  Sweep complete — $(date)"                                   | tee -a "$LOGFILE"
-echo "  Evaluate with:"                                             | tee -a "$LOGFILE"
-echo "    python scripts/interference_score.py 2026"               | tee -a "$LOGFILE"
-echo "============================================================" | tee -a "$LOGFILE"
+log ""
+log "============================================================"
+log "  Sweep complete - $(date)"
+log "  Log: $LOGFILE"
+log "  Evaluate with:"
+log "    python scripts/interference_score.py 2026"
+log "============================================================"
