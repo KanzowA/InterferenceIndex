@@ -24,14 +24,23 @@ from models.iiLossNN import iiLossNN
 # resolved on lookup rather than enumerated.
 _CHECKPOINT_DIR = os.path.join(REPO_ROOT, "checkpoints")
 
+# Hidden widths halve at each residual block, so one base width fixes the
+# whole stack. Varying it traces the capacity axis with the shape held fixed.
+DEFAULT_BASE_WIDTH = 1024
+
+
+def hidden_from_base(base, n_layers=4):
+    return tuple(base >> k for k in range(n_layers))
+
 class _ModelDict(dict):
     def __missing__(self, key):
         # Stage 1: train with lam and save a checkpoint.
         if key.startswith("iiLoss_save_"):
             try:
                 lam = float(key.split("_", 2)[2])
-                return lambda target, seed=0, l=lam: iiLossNN(
+                return lambda target, seed=0, hidden=None, l=lam: iiLossNN(
                     target, lam=l, seed=seed,
+                    hidden=hidden or hidden_from_base(DEFAULT_BASE_WIDTH),
                     checkpoint_dir=os.path.join(_CHECKPOINT_DIR, target),
                 )
             except (ValueError, IndexError):
@@ -40,8 +49,9 @@ class _ModelDict(dict):
         if key.startswith("iiLoss_finetune_"):
             try:
                 lam = float(key.split("_", 2)[2])
-                return lambda target, seed=0, l=lam: iiLossNN(
+                return lambda target, seed=0, hidden=None, l=lam: iiLossNN(
                     target, lam=l, seed=seed,
+                    hidden=hidden or hidden_from_base(DEFAULT_BASE_WIDTH),
                     finetune_from=os.path.join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -54,8 +64,9 @@ class _ModelDict(dict):
         if key.startswith("iiLoss_pcgrad_"):
             try:
                 lam = float(key.rsplit("_", 1)[1])
-                return lambda target, seed=0, l=lam: iiLossNN(
+                return lambda target, seed=0, hidden=None, l=lam: iiLossNN(
                     target, lam=l, seed=seed,
+                    hidden=hidden or hidden_from_base(DEFAULT_BASE_WIDTH),
                     finetune_from=os.path.join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -69,15 +80,18 @@ class _ModelDict(dict):
         if key.startswith("iiLoss_"):
             try:
                 lam = float(key.split("_", 1)[1])
-                return lambda target, seed=0, l=lam: iiLossNN(target, lam=l, seed=seed)
+                return lambda target, seed=0, hidden=None, l=lam: iiLossNN(
+                    target, lam=l, seed=seed,
+                    hidden=hidden or hidden_from_base(DEFAULT_BASE_WIDTH))
             except ValueError:
                 pass
         # Stage 2: reload the MSE checkpoint and fine-tune with Hd^2.
         if key.startswith("HdLoss_finetune_"):
             try:
                 alpha = float(key.split("_", 2)[2])
-                return lambda target, seed=0, a=alpha: HdLossNN(
+                return lambda target, seed=0, hidden=None, a=alpha: HdLossNN(
                     target, lam=a, seed=seed,
+                    hidden=hidden or hidden_from_base(DEFAULT_BASE_WIDTH),
                     finetune_from=os.path.join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -90,8 +104,9 @@ class _ModelDict(dict):
         if key.startswith("HdLoss_pcgrad_"):
             try:
                 alpha = float(key.rsplit("_", 1)[1])
-                return lambda target, seed=0, a=alpha: HdLossNN(
+                return lambda target, seed=0, hidden=None, a=alpha: HdLossNN(
                     target, lam=a, seed=seed,
+                    hidden=hidden or hidden_from_base(DEFAULT_BASE_WIDTH),
                     finetune_from=os.path.join(_CHECKPOINT_DIR, target),
                     finetune_lr=1e-4,
                     finetune_epochs=200,
@@ -105,7 +120,9 @@ class _ModelDict(dict):
         if key.startswith("HdLoss_"):
             try:
                 alpha = float(key.split("_", 1)[1])
-                return lambda target, seed=0, a=alpha: HdLossNN(target, lam=a, seed=seed)
+                return lambda target, seed=0, hidden=None, a=alpha: HdLossNN(
+                    target, lam=a, seed=seed,
+                    hidden=hidden or hidden_from_base(DEFAULT_BASE_WIDTH))
             except ValueError:
                 pass
         known = list(self.keys()) + ["iiLoss_<lam>", "iiLoss_save_<lam>",

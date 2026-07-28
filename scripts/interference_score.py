@@ -210,18 +210,22 @@ def main():
     global MODELS
 
     def _split_variant(name):
-        """Split a run name into (family, lam, seed).
+        """Split a run name into (family, lam, width, seed).
 
-        Runs are named <family>_<lam> with an optional _s<seed> suffix, so
-        both "iiLoss_pcgrad_0.3" and "iiLoss_pcgrad_0.3_s2" are accepted.
+        Runs are named <family>_<lam> with optional _w<width> and _s<seed>
+        suffixes, so "iiLoss_pcgrad_0.3", "iiLoss_pcgrad_0.3_s2" and
+        "iiLoss_save_0.0_w256_s1" are all accepted. Absent suffixes report -1.
         Raises ValueError if the lam field is not numeric.
         """
-        stem, seed = name, -1
-        head, _, tail = name.rpartition("_")
+        stem, seed, width = name, -1, -1
+        head, _, tail = stem.rpartition("_")
         if tail.startswith("s") and tail[1:].isdigit():
             stem, seed = head, int(tail[1:])
+        head, _, tail = stem.rpartition("_")
+        if tail.startswith("w") and tail[1:].isdigit():
+            stem, width = head, int(tail[1:])
         family, _, lam = stem.rpartition("_")
-        return family, float(lam), seed
+        return family, float(lam), width, seed
 
     def _detect_variants(prefix, ml_dir):
         variants = []

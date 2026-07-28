@@ -2,6 +2,7 @@
 iiLossNN - ElementFraction MLP trained with a normalised MSE + xi^2 loss.
 """
 
+import csv
 import os
 import random
 import re
@@ -122,6 +123,8 @@ class iiLossNN(nn.Module):
         Project the xi^2 gradient orthogonal to the MSE gradient each step.
     seed : int
         Base seed. Each fold derives its own RNG state from (seed, fold).
+    history_path : str or None
+        CSV to append the per-epoch training curve to.
     """
 
     model_type = "ii_nn"
@@ -145,6 +148,7 @@ class iiLossNN(nn.Module):
         finetune_epochs = 200,
         use_pcgrad      = False,
         seed            = 0,
+        history_path    = None,
     ):
         super().__init__()
         self.target          = target
@@ -165,6 +169,8 @@ class iiLossNN(nn.Module):
         self.finetune_epochs = finetune_epochs
         self.use_pcgrad      = use_pcgrad
         self.seed            = seed
+        self.history_path    = history_path
+        self.history         = []
 
         self._labels      = None
         self._data        = None
@@ -260,7 +266,7 @@ class iiLossNN(nn.Module):
         is_finetune = self.finetune_from is not None
         if is_finetune:
             ckpt_path = os.path.join(self.finetune_from,
-                                     f"{self.target}_fold{fold_idx}_seed{self.seed}.pt")
+                                     f"{self.target}_fold{fold_idx}_w{self.hidden[0]}_seed{self.seed}.pt")
             state = torch.load(ckpt_path, map_location=dev)
             self._net.load_state_dict(state)
             print(f"  [iiLossNN] Loaded pretrained weights: {ckpt_path}")
@@ -381,6 +387,14 @@ class iiLossNN(nn.Module):
             optimizer.step()
             scheduler.step()
 
+            self.history.append({
+                "fold": fold_idx, "seed": self.seed, "epoch": epoch,
+                "lam_eff": lam_eff,
+                "mse_over_ref": float(mse_loss),
+                "penalty_over_ref": float(xi_loss),
+                "total": float(loss),
+            })
+
             if epoch % 50 == 0 or epoch == actual_epochs - 1:
                 phase = ("warmup" if epoch < warmup_end
                          else "ramp" if epoch < ramp_end
@@ -396,10 +410,12 @@ class iiLossNN(nn.Module):
 
         self._net.eval()
 
+        self._flush_history()
+
         if self.checkpoint_dir is not None:
             os.makedirs(self.checkpoint_dir, exist_ok=True)
             ckpt_path = os.path.join(self.checkpoint_dir,
-                                     f"{self.target}_fold{fold_idx}_seed{self.seed}.pt")
+                                     f"{self.target}_fold{fold_idx}_w{self.hidden[0]}_seed{self.seed}.pt")
             torch.save(self._net.state_dict(), ckpt_path)
             print(f"  [iiLossNN] Saved checkpoint: {ckpt_path}")
 
@@ -418,6 +434,20 @@ class iiLossNN(nn.Module):
 
 
     # -- Internal helpers -------------------------------------------------
+
+    def _flush_history(self):
+        """Append this fold's curve to the CSV, writing a header once."""
+        if not self.history_path or not self.history:
+            return
+        os.makedirs(os.path.dirname(self.history_path), exist_ok=True)
+        fields = list(self.history[0])
+        new = not os.path.exists(self.history_path)
+        with open(self.history_path, "a", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            if new:
+                writer.writeheader()
+            writer.writerows(self.history)
+        self.history = []
 
     def _seed_fold(self, fold_idx):
         """Seed every RNG this fold will draw from.
