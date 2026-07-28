@@ -1,10 +1,7 @@
-"""
-fig2.py
-------------------------
-Figure 2 — Interference circles for the seven baseline models.
+"""Figure 2: interference circles for the seven baseline models.
 
-Reads pre-computed per-compound scores from results/2020/interference_scores_2020.csv
-(generated once by: python interference_score.py allMP).
+Reads per-compound scores from results/2020/interference_scores_2020.csv,
+which scripts/interference_score.py writes.
 """
 
 import argparse
@@ -16,10 +13,13 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import TwoSlopeNorm
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 
 # Default model order
 DEFAULT_MODELS = ["ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet", "Roost", "CGCNN"]
@@ -106,7 +106,7 @@ def plot(by_model: dict, models: list, out_path: str):
         ax.scatter(xis, deltas, c=xis, cmap=_CMAP, norm=norm,
                    s=10, alpha=0.35, zorder=3)
 
-        # Per-N RMS-ξ diamond
+        # Per-N RMS-xi diamond
         for N_val in sorted(set(Ns)):
             xis_N = xis[Ns == N_val]
             rms_N = math.sqrt(float(np.mean(xis_N ** 2)))
@@ -194,15 +194,14 @@ def plot(by_model: dict, models: list, out_path: str):
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved → {out_path}")
+    print(f"Saved >> {out_path}")
 
 
 def main():
-    _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv",    default=os.path.join(_REPO, "results", "2020", "interference_scores_2020.csv"))
+    parser.add_argument("--csv",    default=os.path.join(REPO_ROOT, "results", "2020", "interference_scores_2020.csv"))
     parser.add_argument("--models", nargs="+", default=DEFAULT_MODELS)
-    parser.add_argument("--out",    default=os.path.join(_REPO, "figures", "figure2.png"))
+    parser.add_argument("--out",    default=os.path.join(REPO_ROOT, "figures", "figure2.png"))
     args = parser.parse_args()
 
     print(f"Loading scores from {args.csv} ...")

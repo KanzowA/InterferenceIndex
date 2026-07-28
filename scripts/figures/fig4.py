@@ -1,32 +1,28 @@
-"""
-fig4.py
---------------------
-  (a) Hf MAE
-  (b) Hd MAE
-  (c) F1
-  (d) xi_rms
-vs regularisation strength lambda.  One line per model family.
+"""Figure 4: metrics against regularisation strength lam, one line per model.
+
+    (a) Hf MAE   (b) Hd MAE   (c) F1   (d) xi_rms
 """
 
 import argparse
 import os
 import re
+
 import matplotlib
-matplotlib.use('Agg')
-import pandas as pd
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-from matplotlib.patches import Patch
+import pandas as pd
 
-_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 _COL_W = 6.69
 _FIG_W         = 12.0
 _FS    = round(7.0 * _FIG_W / _COL_W)
 _FS_SM = round(6.0 * _FIG_W / _COL_W)
 _FS_LEG = _FS
 _FS_PANEL = 20
-plt.rcParams.update({'font.family': 'sans-serif', 'font.size': _FS,
-                     'axes.linewidth': 0.8})
+plt.rcParams.update({"font.family": "sans-serif", "font.size": _FS,
+                     "axes.linewidth": 0.8})
 
 # Series definitions
 SERIES = {
@@ -57,9 +53,9 @@ def extract_alpha(name, prefix):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", default=os.path.join(_REPO, "results", "2026",
+    parser.add_argument("--csv", default=os.path.join(REPO_ROOT, "results", "2026",
                                                        "interference_summary_2026.csv"))
-    parser.add_argument("--out", default=os.path.join(_REPO, "figures",
+    parser.add_argument("--out", default=os.path.join(REPO_ROOT, "figures",
                                                        "figure4.png"))
     args = parser.parse_args()
 
@@ -108,9 +104,9 @@ def main():
                     markersize=5, markeredgecolor="white",
                     markeredgewidth=0.5, zorder=3, label=label,
                     alpha=alpha, clip_on=True)
-            ax.axvline(0.3, color='gray', ls='--', lw=0.8, alpha=0.4, label = r"$\lambda=0.3$")
-            
-            if col in ('Hf_MAE', 'Hd_MAE') and alpha >= 1.0:
+            ax.axvline(0.3, color="gray", ls="--", lw=0.8, alpha=0.4, label = r"$\lambda=0.3$")
+
+            if col in ("Hf_MAE", "Hd_MAE") and alpha >= 1.0:
                 ylim_max = 0.265
                 over = sub[sub[col] > ylim_max]
                 if not over.empty:
@@ -126,14 +122,14 @@ def main():
         ax.set_ylabel(ylabel, fontsize=_FS)
         ax.tick_params(labelsize=_FS)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.2f"))
 
-        if col == 'Hf_MAE':
+        if col == "Hf_MAE":
             ax.set_ylim(0.097, 0.131)
             ax.yaxis.set_major_locator(ticker.MultipleLocator(0.01))
             ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.002))
 
-        elif col == 'Hd_MAE':
+        elif col == "Hd_MAE":
             ax.set_ylim(0.109, 0.137)
             ax.yaxis.set_major_locator(ticker.MultipleLocator(0.01))
             ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.002))
@@ -147,8 +143,8 @@ def main():
             ax.yaxis.set_major_locator(ticker.MultipleLocator(0.05))
             ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.01))
             ax.set_ylim(0.895, 1.115)
-            ax.axhline(1.0, color='#6B7280', lw=0.9, ls=':', alpha=0.6,
-                       zorder=1, label=r'$\xi_\mathrm{rms}=1$')
+            ax.axhline(1.0, color="#6B7280", lw=0.9, ls=":", alpha=0.6,
+                       zorder=1, label=r"$\xi_\mathrm{rms}=1$")
 
         ax.grid(True, which="major", lw=0.4, alpha=0.5)
         ax.grid(True, which="minor", lw=0.2, alpha=0.3)
@@ -167,12 +163,11 @@ def main():
             if l not in seen:
                 seen[l] = h
 
-    blank = Patch(visible=False)
     LEGEND_ORDER = [
         "iiLoss+PCGrad", "HdLoss+PCGrad", r"$\lambda=0.3$", r"baseline ($\lambda\!=\!0$)"
     ]
     ordered    = [seen[l] for l in LEGEND_ORDER if l in seen]
-    labels_leg = [l.split('+')[0]       for l in LEGEND_ORDER if l in seen]
+    labels_leg = [l.split("+")[0]       for l in LEGEND_ORDER if l in seen]
     fig.legend(ordered, labels_leg,
                loc="lower center", ncol=2,
                fontsize=_FS_LEG, framealpha=0.9,
@@ -186,7 +181,7 @@ def main():
 
     fig.tight_layout()
     fig.savefig(args.out, dpi=300, bbox_inches="tight")
-    print(f"Saved -> {args.out}")
+    print(f"Saved >> {args.out}")
 
 
 if __name__ == "__main__":

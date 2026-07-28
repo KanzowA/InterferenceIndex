@@ -1,48 +1,40 @@
 """
-iiLossNN — ElementFraction MLP trained with a normalised MSE + xi^2 loss.
+iiLossNN - ElementFraction MLP trained with a normalised MSE + xi^2 loss.
 """
 
 import os
 import re
+
 import numpy as np
 import torch
 import torch.nn as nn
+from matminer.featurizers.composition import ElementFraction
 
 try:
     from pymatgen.core import Composition
 except ImportError:
     from pymatgen import Composition
 
-from matminer.featurizers.composition import ElementFraction
-
 MAX_RXN_SIZE = 10
 
-# Formula helpers
+# -- Formula helpers ------------------------------------------------------
 
 def _num_atoms(formula: str) -> int:
-    """Total atom count for a formula string, e.g. 'Ac1Ag3' → 4."""
-    tokens = re.findall(r'([A-Z][a-z]*)(\d*)', formula)
+    """Total atom count for a formula string, e.g. 'Ac1Ag3' -> 4."""
+    tokens = re.findall(r"([A-Z][a-z]*)(\d*)", formula)
     return sum(int(n) if n else 1 for el, n in tokens if el)
 
 
 def _is_element(formula: str) -> bool:
     """True iff the formula contains only one distinct element symbol."""
-    symbols = re.findall(r'[A-Z][a-z]?', formula)
+    symbols = re.findall(r"[A-Z][a-z]?", formula)
     return len(set(symbols)) == 1
 
 
-# Architecture
+# -- Architecture ---------------------------------------------------------
 
 class _ResBlock(nn.Module):
-    """
-    Single residual block: main path (Linear → LN → ReLU → Dropout)
-    with a skip projection for dimension changes.
-
-        out = ReLU( LN( W·x ) ) + W_skip·x
-
-    Using pre-activation style (LN before activation) stabilises
-    gradient flow through many blocks.
-    """
+    """Linear -> LayerNorm -> ReLU -> Dropout, with a skip connection."""
 
     def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0):
         super().__init__()
@@ -52,7 +44,6 @@ class _ResBlock(nn.Module):
             nn.ReLU(),
             nn.Dropout(p=dropout) if dropout > 0.0 else nn.Identity(),
         )
-        # Skip: project if dims differ, else pass-through
         self.skip = (nn.Linear(in_dim, out_dim, bias=False)
                      if in_dim != out_dim else nn.Identity())
         self.act  = nn.ReLU()
@@ -62,33 +53,24 @@ class _ResBlock(nn.Module):
 
 
 class _ResidualMLP(nn.Module):
-    """
-    input_dim → Linear(input_dim, hidden[0]) → LN → ReLU
-              → ResBlock(hidden[0] → hidden[1])
-              → ResBlock(hidden[1] → hidden[2])
-              → ...
-              → Linear(hidden[-1], 1)
-    """
+    """Input projection, a stack of residual blocks, then a scalar head."""
 
     def __init__(self, input_dim: int,
                  hidden: tuple = (1024, 512, 256, 128),
                  dropout: float = 0.0):
         super().__init__()
 
-        # Input projection (no skip — maps from raw features)
         self.input_proj = nn.Sequential(
             nn.Linear(input_dim, hidden[0]),
             nn.LayerNorm(hidden[0]),
             nn.ReLU(),
         )
 
-        # Residual blocks
         blocks = []
         for in_h, out_h in zip(hidden[:-1], hidden[1:]):
             blocks.append(_ResBlock(in_h, out_h, dropout=dropout))
         self.blocks = nn.Sequential(*blocks)
 
-        # Output
         self.out = nn.Linear(hidden[-1], 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -97,48 +79,53 @@ class _ResidualMLP(nn.Module):
         return self.out(x).squeeze(1)
 
 
-# iiLossNN
+# -- iiLossNN -------------------------------------------------------------
 
 class iiLossNN(nn.Module):
-    """
-    ElementFraction MLP with ξ²-regularised loss (interference index loss).
+    """ElementFraction MLP trained with a normalised MSE + xi^2 loss.
 
     Parameters
     ----------
     target : str
-        Regression target key ('Hf' or 'Hd').
+        Regression target key, 'Hf' or 'Hd'.
     lam : float
-        Weight of ξ² loss term (0 = pure MSE, 1 = pure ξ²).
+        Weight of the xi^2 term; 0 is pure MSE, 1 is pure xi^2.
     eps : float
-        Stabiliser in ξ² denominator (eV²/atom²).
+        Stabiliser in the xi^2 denominator, in eV^2/atom^2.
     hidden : tuple of int
-        Hidden layer widths. Default: (1024, 512, 256, 128).
+        Hidden layer widths.
     dropout : float
-        Dropout probability (0 = no dropout). Default: 0.0.
+        Dropout probability; 0 disables it.
     lr : float
         Adam initial learning rate.
     epochs : int
-        Total training epochs (full-batch).
+        Total training epochs, full-batch.
     warmup_frac : float
-        Fraction of epochs to train with λ=0 (pure MSE) before
-        ramping to the target λ.  E.g. 0.1 = 50 warmup epochs
-        out of 500.  Gives Hf accuracy a head start.
+        Fraction of epochs held at lam=0 before ramping to the target lam.
     renorm_every : int
-        Recompute MSE_ref and ξ²_ref every N epochs so the
-        (1-λ)/λ weighting stays honest as MSE decays during
-        training.  Set to 0 to use fixed epoch-0 references
-        (original behaviour).
+        Recompute the loss reference scales every N epochs; 0 fixes them at
+        their epoch-0 values.
     grad_clip : float
-        Max gradient norm for clipping (0 = no clipping).
+        Maximum gradient norm; 0 disables clipping.
     device : str or None
-        'cuda', 'cpu', or None (auto-detect).
+        'cuda', 'cpu', or None to auto-detect.
+    checkpoint_dir : str or None
+        Directory to write per-fold weights to after stage-one training.
+    finetune_from : str or None
+        Directory to load per-fold stage-one weights from.
+    finetune_lr : float
+        Learning rate used when fine-tuning.
+    finetune_epochs : int
+        Epoch count used when fine-tuning.
+    use_pcgrad : bool
+        Project the xi^2 gradient orthogonal to the MSE gradient each step.
     """
 
-    model_type = 'ii_nn'
+    model_type = "ii_nn"
 
     def __init__(
         self,
-        target          = 'Hf',
+        target          = "Hf",
         lam             = 0.1,
         eps             = 1e-4,
         hidden          = (1024, 512, 256, 128),
@@ -149,12 +136,11 @@ class iiLossNN(nn.Module):
         renorm_every    = 50,
         grad_clip       = 1.0,
         device          = None,
-        # ── Two-stage fine-tuning ──────────────────────────────────────────
-        checkpoint_dir  = None,   # save per-fold weights here after training
-        finetune_from   = None,   # load per-fold weights from here (stage 2)
-        finetune_lr     = 1e-4,   # LR for fine-tuning (lower than stage 1)
-        finetune_epochs = 200,    # epochs for fine-tuning
-        use_pcgrad      = False,  # gradient surgery: project xi^2 orthogonal to MSE
+        checkpoint_dir  = None,
+        finetune_from   = None,
+        finetune_lr     = 1e-4,
+        finetune_epochs = 200,
+        use_pcgrad      = False,
     ):
         super().__init__()
         self.target          = target
@@ -168,7 +154,7 @@ class iiLossNN(nn.Module):
         self.renorm_every    = renorm_every
         self.grad_clip       = grad_clip
         self.device          = (device if device
-                                else ('cuda' if torch.cuda.is_available() else 'cpu'))
+                                else ("cuda" if torch.cuda.is_available() else "cpu"))
         self.checkpoint_dir  = checkpoint_dir
         self.finetune_from   = finetune_from
         self.finetune_lr     = finetune_lr
@@ -180,13 +166,13 @@ class iiLossNN(nn.Module):
         self._net         = None
         self._fold_counter = 0
 
-    # MLModel interface
+    # -- MLModel interface ------------------------------------------------
 
     def preprocess(self, X):
-        """
-        Featurise with ElementFraction.
-        Returns features with prepended index column (col 0 = row index)
-        so that KFold slicing in process.py doesn't need modification.
+        """Featurise with ElementFraction.
+
+        Column 0 of the returned features is the row index, so that the KFold
+        slicing in process.py carries the label mapping through unchanged.
         """
         self._data = X
 
@@ -215,30 +201,27 @@ class iiLossNN(nn.Module):
     def fit(self, X, Y):
         dev = torch.device(self.device)
 
-        # Track fold index
         fold_idx = self._fold_counter
         self._fold_counter += 1
 
-        # Unpack index column
         train_indices = X[:, 0].astype(int)
         X_feat        = X[:, 1:].astype(np.float32)
 
         train_labels  = self._labels[train_indices]
         label_to_pos  = {lbl: i for i, lbl in enumerate(train_labels)}
 
-        # Build reaction tensors
         R_idx_list, R_coeff_list, R_mask_list = [], [], []
 
         for lbl in train_labels:
             entry   = self._data.get(lbl, {})
-            rxn_str = entry.get('rxn', '')
+            rxn_str = entry.get("rxn", "")
             if not rxn_str:
                 continue
             pairs = _parse_rxn(rxn_str, label_to_pos)
-            # Prepend reactant with coefficient -1 so that
+            # The reactant enters the reaction with coefficient -1.
             pairs.insert(0, (label_to_pos[lbl], -1.0))
             if len(pairs) < 2:
-                # Only reactant, no non-elemental products → Hd undefined
+                # No non-elemental products, so Hd is undefined here.
                 continue
 
             idx_row   = [p[0] for p in pairs]
@@ -261,13 +244,11 @@ class iiLossNN(nn.Module):
             has_rxn = True
         else:
             has_rxn = False
-            print("  [iiLossNN] Warning: no reactions in fold — pure MSE.")
+            print("  [iiLossNN] Warning: no reactions in fold - pure MSE.")
 
-        # Network
         input_dim = X_feat.shape[1]
         self._net = _ResidualMLP(input_dim, self.hidden, self.dropout).to(dev)
 
-        # Two-stage: load pretrained weights if fine-tuning
         is_finetune = self.finetune_from is not None
         if is_finetune:
             ckpt_path = os.path.join(self.finetune_from,
@@ -277,15 +258,16 @@ class iiLossNN(nn.Module):
             print(f"  [iiLossNN] Loaded pretrained weights: {ckpt_path}")
             actual_lr      = self.finetune_lr
             actual_epochs  = self.finetune_epochs
-            actual_warmup  = 0.0   # start from good model — no warmup
-            actual_renorm  = 0     # keep refs fixed at converged values
+            # Stage two starts converged, so no warmup and fixed references.
+            actual_warmup  = 0.0
+            actual_renorm  = 0
         else:
             actual_lr      = self.lr
             actual_epochs  = self.epochs
             actual_warmup  = self.warmup_frac
             actual_renorm  = self.renorm_every
 
-        # -- Optimiser and scheduler ---------------------------------------
+        # -- Optimiser and scheduler --------------------------------------
         optimizer = torch.optim.Adam(
             self._net.parameters(), lr=actual_lr, weight_decay=1e-4
         )
@@ -296,11 +278,8 @@ class iiLossNN(nn.Module):
         X_t = torch.tensor(X_feat, dtype=torch.float32, device=dev)
         Y_t = torch.tensor(Y,      dtype=torch.float32, device=dev)
 
-        # -- Warmup schedule -----------------------------------------------
-        # Phase 1: first warmup_frac of epochs → λ_eff = 0 (pure MSE)
-        # Phase 2: next warmup_frac of epochs  → λ_eff ramps 0 → λ
-        # Phase 3: remainder                   → λ_eff = λ
-        # (Fine-tuning: actual_warmup=0, so λ_eff = λ from epoch 0)
+        # lam is held at 0 for the first warmup_frac of epochs, ramped over
+        # the next warmup_frac, then held at its target value.
         warmup_end  = int(actual_warmup * actual_epochs)
         ramp_end    = int(2 * actual_warmup * actual_epochs)
 
@@ -311,8 +290,6 @@ class iiLossNN(nn.Module):
                 return self.lam * (epoch - warmup_end) / max(ramp_end - warmup_end, 1)
             return self.lam
 
-        # Reference values (set from current model state)
-        # For fine-tuning: model is pretrained
         mse_ref, xi2_ref = self._compute_refs(
             X_t, Y_t,
             R_idx   if has_rxn else None,
@@ -321,11 +298,9 @@ class iiLossNN(nn.Module):
             has_rxn, dev,
         )
 
-        # Training loop (full-batch)
         self._net.train()
         for epoch in range(actual_epochs):
 
-            # Refresh normalisation references periodically (disabled for fine-tuning)
             if (actual_renorm > 0
                     and epoch > 0
                     and epoch % actual_renorm == 0):
@@ -340,8 +315,8 @@ class iiLossNN(nn.Module):
             lam_eff = effective_lam(epoch)
 
             if self.use_pcgrad and has_rxn and lam_eff > 0:
-                # PCGrad: two separate backward passes, then project
-                # Pass 1: MSE gradient
+                # Two backward passes so the gradients can be projected
+                # against each other before the optimiser step.
                 optimizer.zero_grad()
                 pred      = self._net(X_t)
                 delta     = pred - Y_t
@@ -351,7 +326,6 @@ class iiLossNN(nn.Module):
                          else torch.zeros_like(p)
                          for p in self._net.parameters()]
 
-                # Pass 2: ii^2 gradient
                 optimizer.zero_grad()
                 pred      = self._net(X_t)
                 delta     = pred - Y_t
@@ -364,20 +338,19 @@ class iiLossNN(nn.Module):
                         else torch.zeros_like(p)
                         for p in self._net.parameters()]
 
-                # Project g_xi orthogonal to g_mse (per-step, exact at current state)
+                # Remove the part of the xi^2 gradient that opposes the MSE
+                # gradient in parameter space.
                 dot   = sum((a * b).sum() for a, b in zip(g_xi, g_mse))
                 norm2 = sum((b * b).sum() for b in g_mse).clamp(min=1e-12)
                 g_xi_proj = [a - (dot / norm2) * b for a, b in zip(g_xi, g_mse)]
 
-                # Combine and set gradients
                 optimizer.zero_grad()
                 for p, gm, gp in zip(self._net.parameters(), g_mse, g_xi_proj):
                     p.grad = (1.0 - lam_eff) * gm + lam_eff * gp
 
-                loss = (1.0 - lam_eff) * mse_loss + lam_eff * xi_loss  # for logging
+                loss = (1.0 - lam_eff) * mse_loss + lam_eff * xi_loss  # logging only
 
             else:
-                # ── Standard combined backward pass ───────────────────────
                 optimizer.zero_grad()
                 pred      = self._net(X_t)
                 delta     = pred - Y_t
@@ -401,21 +374,20 @@ class iiLossNN(nn.Module):
             scheduler.step()
 
             if epoch % 50 == 0 or epoch == actual_epochs - 1:
-                phase = ('warmup' if epoch < warmup_end
-                         else 'ramp' if epoch < ramp_end
-                         else 'finetune' if is_finetune
-                         else 'train')
-                msg = (f'  [iiLossNN] ep {epoch:>4d} [{phase}] '
-                       f'loss={loss.item():.5f}  '
-                       f'MSE/ref={mse_loss.item():.5f}  '
-                       f'lam_eff={lam_eff:.3f}')
+                phase = ("warmup" if epoch < warmup_end
+                         else "ramp" if epoch < ramp_end
+                         else "finetune" if is_finetune
+                         else "train")
+                msg = (f"  [iiLossNN] ep {epoch:>4d} [{phase}] "
+                       f"loss={loss.item():.5f}  "
+                       f"MSE/ref={mse_loss.item():.5f}  "
+                       f"lam_eff={lam_eff:.3f}")
                 if lam_eff > 0 and has_rxn:
-                    msg += f'  xi2/ref={xi_loss.item():.5f}'
+                    msg += f"  xi2/ref={xi_loss.item():.5f}"
                 print(msg)
 
         self._net.eval()
 
-        # Save checkpoint (stage 1)
         if self.checkpoint_dir is not None:
             os.makedirs(self.checkpoint_dir, exist_ok=True)
             ckpt_path = os.path.join(self.checkpoint_dir,
@@ -433,20 +405,18 @@ class iiLossNN(nn.Module):
         return [float(v) for v in preds]
 
     def fit_and_predict(self, Xtrain, Ytrain, Xtest):
-        """
-        Convenience method to combine fit and predict.
-        """
+        """Fit on the training fold and predict the held-out fold."""
         return self.fit(Xtrain, Ytrain).predict(Xtest)
 
 
-    # Internal helpers
+    # -- Internal helpers -------------------------------------------------
 
     def _compute_refs(self, X_t, Y_t, R_idx, R_coeff, R_mask,
                       has_rxn, dev):
-        """
-        Compute fresh MSE_ref and xi²_ref from current model predictions.
-        Called at epoch 0 and every renorm_every epochs so that the
-        (1-λ)/λ weighting stays calibrated as MSE decays during training.
+        """Loss reference scales taken at the current model state.
+
+        Both terms are divided by these so that lam weights them comparably;
+        without it lam would not mean the same thing across the two losses.
         """
         var_y = Y_t.var(unbiased=False).clamp(min=1e-6)
         with torch.no_grad():
@@ -465,24 +435,23 @@ class iiLossNN(nn.Module):
         return mse_ref, xi2_ref
 
 
-# Helper
+# -- Reaction parsing -----------------------------------------------------
 
 def _parse_rxn(rxn_str, label_to_pos):
-    """
-    Parse the product side of a reaction string, e.g.
-    '0.6667_Ac + 0.3333_Ac1Ag3', into [(position, weight), ...].
+    """Parse the product side of a reaction into [(position, weight), ...].
 
-    Elements are skipped (Hf = 0 by definition, excluded in evaluation).
+    Elements are skipped: their formation enthalpy is zero by definition, so
+    they contribute nothing to the aggregate error.
     """
     pairs = []
-    for token in rxn_str.split('+'):
+    for token in rxn_str.split("+"):
         token = token.strip()
-        m = re.match(r'^([\d.]+)_(.+)$', token)
+        m = re.match(r"^([\d.]+)_(.+)$", token)
         if m:
             coeff   = float(m.group(1))
             formula = m.group(2).strip()
             if _is_element(formula):
-                continue                    # elements: Hf = 0, skip
+                continue
             if formula in label_to_pos:
                 pairs.append((label_to_pos[formula], coeff))
     return pairs

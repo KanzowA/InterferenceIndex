@@ -1,27 +1,21 @@
-"""
-interference_score.py
----------------------
-Computes the interference score for ML formation energy models evaluated
-in Bartel et al. (npj Comput. Mater. 6, 97, 2020).
+"""Interference scores for machine-learned formation enthalpy predictions.
 
 Usage
 -----
-Run from the TestStabilityMl directory:
+    python scripts/interference_score.py 2020
+    python scripts/interference_score.py 2026
 
-    python interference_score.py                  # uses allMP (5-fold, all compounds)
-    python interference_score.py allMP_single     # uses allMP_single (80/20 split)
-
-Output
-------
-  interference_scores.csv   — per-compound scores for every model
-  interference_summary.csv  — MAE, RMSE, mean/median ξ per model
+Output, written to results/<year>/
+    interference_scores_<year>.csv    per-compound scores for every model
+    interference_summary_<year>.csv   per-model MAE, RMSE, xi and F1
 """
 
-import os
+import argparse
+import csv
 import json
 import math
-import csv
-from collections import defaultdict
+import os
+import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
@@ -40,7 +34,7 @@ MODELS_BASE = ["ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet",
 MODELS = list(MODELS_BASE)
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# -- Helpers --------------------------------------------------------------
 
 def load_json(path):
     with open(path) as f:
@@ -48,15 +42,11 @@ def load_json(path):
 
 
 def parse_rxn(rxn_str):
-    """
-    Parse a reaction string such as '0.6667_Ac + 0.3333_Ac1Ag3'.
-    Returns list of (amount: float, formula: str)
-    """
+    """Parse a reaction string into [(amount, formula), ...]."""
     products = []
     for token in rxn_str.split(" + "):
         token = token.strip()
         if "_" not in token:
-            # bare formula with no coefficient — treat as weight 1.0
             products.append((1.0, token))
             continue
         amt_str, formula = token.split("_", 1)
@@ -66,22 +56,22 @@ def parse_rxn(rxn_str):
 
 def is_element(formula):
     """True only for single-element formulas (Fe, Li, O, Fe2, S8, ...)"""
-    import re
-    symbols = re.findall(r'[A-Z][a-z]?', formula)
+    symbols = re.findall(r"[A-Z][a-z]?", formula)
     return len(set(symbols)) == 1
 
 
 def num_atoms(formula):
-    import re
-    tokens = re.findall(r'([A-Z][a-z]*)(\d*)', formula)
+    tokens = re.findall(r"([A-Z][a-z]*)(\d*)", formula)
     return sum(int(n) if n else 1 for el, n in tokens if el)
 
 
-def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error',
+def interference_score(compound, rxn_str, ml_hf, dft_hf, mode="error",
                        normalized_coeffs=False):
-    """
-    normalized_coeffs=False (2020): rxn_str stores raw v_k; weight = v_k * N_k / N_c.
-    normalized_coeffs=True  (2026): rxn_str stores v_k * N_k / N_c already; use directly.
+    """Interference score for one decomposition reaction.
+
+    The 2020 files store raw stoichiometric coefficients, which must be
+    rescaled by N_k / N_c; the 2026 files store per-atom weights already.
+    Set normalized_coeffs accordingly.
     """
     products = parse_rxn(rxn_str)
     N_c = num_atoms(compound)
@@ -90,7 +80,7 @@ def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error',
     if compound not in ml_hf or compound not in dft_hf:
         return None
     if not is_element(compound):
-        delta_c = ml_hf[compound] - dft_hf[compound] if mode == 'error' else ml_hf[compound]
+        delta_c = ml_hf[compound] - dft_hf[compound] if mode == "error" else ml_hf[compound]
         c.append(-delta_c)
 
     for amt_k, formula_k in products:
@@ -98,14 +88,14 @@ def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error',
             continue
         if formula_k not in ml_hf or formula_k not in dft_hf:
             return None
-        delta_k = ml_hf[formula_k] - dft_hf[formula_k] if mode == 'error' else ml_hf[formula_k]
+        delta_k = ml_hf[formula_k] - dft_hf[formula_k] if mode == "error" else ml_hf[formula_k]
         if normalized_coeffs:
             weight = amt_k                  # 2026: already per-atom weight
         else:
             N_k    = num_atoms(formula_k)
-            weight = amt_k * N_k / N_c     # 2020: raw v_k → normalise
+            weight = amt_k * N_k / N_c     # 2020: raw v_k -> normalise
         c.append(weight * delta_k)
-                 
+
     if len(c) == 0:
         return None
 
@@ -120,16 +110,16 @@ def interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error',
 
 
 def detect_convention(hullout, n_samples=100):
-    """Auto-detect rxn coefficient convention from a hullout dict.
+    """Detect the coefficient convention by reconstructing Hd both ways.
 
-    Returns True  if coefficients are pre-normalised per-atom weights (2026-style).
-    Returns False if coefficients are raw stoichiometric amounts   (2020-style).
+    True if the coefficients are pre-normalised per-atom weights, False if
+    they are raw stoichiometric amounts.
     """
-    dft_hf = {k: v['Hf'] for k, v in hullout.items()
-              if isinstance(v, dict) and 'Hf' in v}
+    dft_hf = {k: v["Hf"] for k, v in hullout.items()
+              if isinstance(v, dict) and "Hf" in v}
     n_C = n_A = 0
     for compound, entry in hullout.items():
-        if not isinstance(entry, dict) or 'rxn' not in entry or 'Hd' not in entry:
+        if not isinstance(entry, dict) or "rxn" not in entry or "Hd" not in entry:
             continue
         if is_element(compound):
             continue
@@ -138,10 +128,10 @@ def detect_convention(hullout, n_samples=100):
         if hd_A is None:
             continue
         ok = True
-        for token in entry['rxn'].split(' + '):
-            if '_' not in token:
+        for token in entry["rxn"].split(" + "):
+            if "_" not in token:
                 continue
-            amt_str, fk = token.strip().split('_', 1)
+            amt_str, fk = token.strip().split("_", 1)
             if is_element(fk):
                 continue
             if fk not in dft_hf:
@@ -153,15 +143,15 @@ def detect_convention(hullout, n_samples=100):
             hd_C -= v_k * dft_hf[fk]
         if not ok:
             continue
-        err_A = abs(hd_A - entry['Hd'])
-        err_C = abs(hd_C - entry['Hd'])
+        err_A = abs(hd_A - entry["Hd"])
+        err_C = abs(hd_C - entry["Hd"])
         if err_C < err_A:
             n_C += 1
         elif err_A < err_C:
             n_A += 1
         if n_C + n_A >= n_samples:
             break
-    return n_C > n_A   # True → normalised (Convention C / 2026)
+    return n_C > n_A   # True -> normalised (Convention C / 2026)
 
 
 def compute_mae_rmse(ml_hf, dft_hf, reference_compounds=None):
@@ -169,10 +159,12 @@ def compute_mae_rmse(ml_hf, dft_hf, reference_compounds=None):
 
     Parameters
     ----------
-    ml_hf : dict  {formula: predicted_Hf}
-    dft_hf : dict {formula: dft_Hf}
+    ml_hf : dict
+        Predicted formation enthalpy per formula.
+    dft_hf : dict
+        Reference formation enthalpy per formula.
     reference_compounds : iterable, optional
-    The full set of compounds over which MAE is defined.
+        Compounds the MAE is defined over; defaults to the predicted ones.
     """
     errors = []
     n_missing = 0
@@ -185,19 +177,18 @@ def compute_mae_rmse(ml_hf, dft_hf, reference_compounds=None):
             continue
         errors.append(ml_hf[formula] - dft_hf[formula])
     if n_missing:
-        print(f"    [MAE] {n_missing} compounds in reference set have no ML prediction — excluded from MAE")
+        print(f"    [MAE] {n_missing} compounds in reference set have no ML prediction - excluded from MAE")
     if not errors:
-        return float('nan'), float('nan')
+        return float("nan"), float("nan")
     mae  = sum(abs(e) for e in errors) / len(errors)
     rmse = math.sqrt(sum(e**2 for e in errors) / len(errors))
     return mae, rmse
 
 
 
-# Main
+# -- Main -----------------------------------------------------------------
 
 def main():
-    import argparse
     parser = argparse.ArgumentParser(description="Compute interference scores for ML models.")
     parser.add_argument("split", nargs="?", default="2020",
                         help="Data split to evaluate (default: 2020).")
@@ -211,7 +202,7 @@ def main():
         ML_DIR = os.path.join(DATA_ROOT, "2026", "ml", "Hf")
     else:
         raise ValueError(f"Unknown split: {split}")
-    print(f"Using split: {split}  →  {ML_DIR}\n")
+    print(f"Using split: {split}  ->  {ML_DIR}\n")
 
     HULLOUT = HULLOUT_MAP[split]
     print(f"Using hullout: {HULLOUT}\n")
@@ -243,10 +234,9 @@ def main():
     if not ii_variants and not ed_variants:
         print("No iiLoss_* or HdLoss_* variants found in ml_data folder.")
 
-    print("Loading DFT reference data …")
+    print("Loading DFT reference data ...")
     hullout = load_json(HULLOUT)
 
-    # Auto-detect rxn coefficient convention from the hullout data.
     normalized_coeffs = detect_convention(hullout)
     print(f"  Convention: {'pre-normalised per-atom (2026-style)' if normalized_coeffs else 'raw stoichiometric (2020-style)'}")
 
@@ -260,7 +250,7 @@ def main():
     print(f"  {len(valid_compounds)} non-elemental compounds for interference scoring\n")
 
     results = []
-    summary = {}   # model → {"scores": [], "mae": float, "rmse": float, "n": int}
+    summary = {}   # model -> {"scores": [], "mae": float, "rmse": float, "n": int}
 
     for model in MODELS:
         ml_input_path = os.path.join(ML_DIR, model, "ml_input.json")
@@ -268,7 +258,7 @@ def main():
             print(f"  [SKIP] {model}: ml_input.json not found at {ml_input_path}")
             continue
 
-        print(f"Processing {model} …")
+        print(f"Processing {model} ...")
         ml_hf = load_json(ml_input_path)
 
         mae, rmse = compute_mae_rmse(ml_hf, dft_hf_all, reference_compounds=list(dft_hf_all.keys()))
@@ -279,12 +269,12 @@ def main():
         n_skip_missing = 0   # result_err is None (compound or product absent from ml_hf)
         n_skip_N1      = 0   # N == 1 (decomposes only to elements, ii undefined)
         n_skip_ml      = 0   # result_ml is None (ML denominator vanishes)
-        tp = fp = fn = tn = 0   # stability classification (Hd_ML ≤ 0 vs Hd_DFT ≤ 0)
+        tp = fp = fn = tn = 0   # stability classification (Hd_ML <= 0 vs Hd_DFT <= 0)
 
         for compound in valid_compounds:
             entry   = hullout[compound]
             rxn_str = entry["rxn"]
-            result_err = interference_score(compound, rxn_str, ml_hf, dft_hf, mode='error',
+            result_err = interference_score(compound, rxn_str, ml_hf, dft_hf, mode="error",
                                             normalized_coeffs=normalized_coeffs)
 
             if result_err is None:
@@ -293,13 +283,11 @@ def main():
 
             xi_err, N, signed_sum = result_err
 
-            # Ed MAE: include ALL compounds (N=1 and above)
-            # Hd_ML - Hd_DFT = -signed_sum  (signed_sum = Hd_DFT - Hd_ML)
+            # signed_sum is Hd_DFT - Hd_ML, so the ML error is its negative.
             hd_err = -signed_sum
             hd_errors.append(hd_err)
 
-            # Stability classification: predict stable iff Hd_ML <= 0
-            # (included for all N, before the N==1 xi-skip below)
+            # Classified for all N, before the N == 1 skip below.
             hd_ml = entry["Hd"] + hd_err
             if entry["Hd"] <= 0:
                 if hd_ml <= 0: tp += 1
@@ -308,12 +296,12 @@ def main():
                 if hd_ml <= 0: fp += 1
                 else:          tn += 1
 
-            # ii: exclude single-participant reactions (N=1 is geometrically undefined)
+            # A single participant leaves xi geometrically undefined.
             if N == 1:
                 n_skip_N1 += 1
                 continue
 
-            result_ml = interference_score(compound, rxn_str, ml_hf, dft_hf, mode='ml',
+            result_ml = interference_score(compound, rxn_str, ml_hf, dft_hf, mode="ml",
                                            normalized_coeffs=normalized_coeffs)
             if result_ml is None:
                 n_skip_ml += 1
@@ -346,28 +334,25 @@ def main():
                 "sqrt_N":    round(sqrt_N, 4),
             })
 
-        # Ed MAE, RMSE over all compounds with reactions (including N=1)
-        hd_mae  = sum(abs(e) for e in hd_errors) / len(hd_errors) if hd_errors else float('nan')
-        hd_rmse = math.sqrt(sum(e**2 for e in hd_errors) / len(hd_errors)) if hd_errors else float('nan')
+        hd_mae  = sum(abs(e) for e in hd_errors) / len(hd_errors) if hd_errors else float("nan")
+        hd_rmse = math.sqrt(sum(e**2 for e in hd_errors) / len(hd_errors)) if hd_errors else float("nan")
 
-        # Compute precision, recall and F1 score from confusion matrix
-        prec = tp / (tp + fp) if (tp + fp) > 0 else float('nan')
-        rec  = tp / (tp + fn) if (tp + fn) > 0 else float('nan')
+        prec = tp / (tp + fp) if (tp + fp) > 0 else float("nan")
+        rec  = tp / (tp + fn) if (tp + fn) > 0 else float("nan")
         f1   = (2 * prec * rec / (prec + rec)
-                if (prec + rec) > 0 else float('nan'))
+                if (prec + rec) > 0 else float("nan"))
         n_skip = n_skip_missing + n_skip_N1 + n_skip_ml
 
         print(f"  scored {n_ok} for xi  |  {len(hd_errors)} for Hd MAE  |  "
               f"skipped {n_skip} (missing: {n_skip_missing}, N=1: {n_skip_N1}, ml_denom: {n_skip_ml})")
-        print(f"  stability: tp={tp} fp={fp} fn={fn} tn={tn}  →  F1={f1:.4f}  P={prec:.4f}  R={rec:.4f}")
-        
+        print(f"  stability: tp={tp} fp={fp} fn={fn} tn={tn}  ->  F1={f1:.4f}  P={prec:.4f}  R={rec:.4f}")
+
         summary[model] = {"scores": scores, "mae": mae, "rmse": rmse,
                           "hd_mae": hd_mae, "hd_rmse": hd_rmse,
                           "n": n_ok, "n_hd": len(hd_errors),
                           "f1": f1, "precision": prec, "recall": rec,
                           "tp": tp, "fp": fp, "fn": fn, "tn": tn}
 
-    # Write per-compound CSV
     year = "2020" if split.startswith("2020") else "2026"
     out_dir = os.path.join(REPO_ROOT, "results", year)
     os.makedirs(out_dir, exist_ok=True)
@@ -382,7 +367,6 @@ def main():
         w.writerows(results)
     print(f"\nPer-compound scores written to  {out_csv}")
 
-    # Write summary CSV
     sum_csv = os.path.join(out_dir, f"interference_summary_{year}.csv")
     with open(sum_csv, "w", newline="") as f:
         w = csv.writer(f)
@@ -392,8 +376,8 @@ def main():
         for model, s in summary.items():
             sc      = sorted(s["scores"])
             n       = len(sc)
-            rms_xi  = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
-            med_xi  = sc[n // 2] if n else float('nan')
+            rms_xi  = math.sqrt(sum(x**2 for x in sc) / n) if n else float("nan")
+            med_xi  = sc[n // 2] if n else float("nan")
             w.writerow([model, s["n"], s["n_hd"],
                         round(s["mae"],     4),
                         round(s["rmse"],    4),
@@ -407,21 +391,20 @@ def main():
                         s["tp"], s["fp"], s["fn"], s["tn"]])
     print(f"Summary written to              {sum_csv}")
 
-    # Print comparison table overview
     col = "{:<20}  {:>7}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}  {:>8}"
-    sep = "─" * 96
-    print(rf"\n{sep}")
+    sep = "-" * 96
+    print(f"\n{sep}")
     print(f"  Interference Score Summary  ({split})")
-    print(r"  lower $\xi$ = more error cancellation  |  Ed = derived decomposition enthalpy")
-    print(r"  RMS $\xi=\sqrt{\langle\xi^2\rangle}$; statistical expectation: $\xi_\mathrm{rms}=1$ for i.i.d. residuals")
+    print("  lower xi = more error cancellation  |  Ed = derived decomposition enthalpy")
+    print("  xi_rms = sqrt(<xi^2>); statistical expectation is 1 for i.i.d. residuals")
     print(sep)
-    print(col.format("Model", "N", "Ef MAE", "Ef RMSE", "Ed MAE", "Ed RMSE", r"RMS $\xi$", "Median $\xi$", "F1"))
+    print(col.format("Model", "N", "Ef MAE", "Ef RMSE", "Ed MAE", "Ed RMSE", "xi_rms", "xi_median", "F1"))
     print(sep)
     for model, s in summary.items():
         sc     = sorted(s["scores"])
         n      = len(sc)
-        rms_xi = math.sqrt(sum(x**2 for x in sc) / n) if n else float('nan')
-        med_xi = sc[n // 2] if n else float('nan')
+        rms_xi = math.sqrt(sum(x**2 for x in sc) / n) if n else float("nan")
+        med_xi = sc[n // 2] if n else float("nan")
         print(col.format(
             model, s["n"],
             f"{s['mae']:.4f}",

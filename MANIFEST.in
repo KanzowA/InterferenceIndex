@@ -1,7 +1,6 @@
 include README.md
 include LICENSE.txt
 include environment.yml
-include CITATIONS.md
 
 # 2020 hull data and pre-computed baseline predictions (tracked in git)
 recursive-include data/2020 *.json

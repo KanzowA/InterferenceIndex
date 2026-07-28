@@ -1,22 +1,11 @@
-#!/usr/bin/env python3
-"""
-Download the current Materials Project database and build hullout_current.json
+"""Build a hullout file from the current Materials Project database.
 
-Criteria:
-  - Nonelemental compounds only
-  - Formation energy filter: Hf < 1 eV/atom
-  - Ground-state structure per formula (most negative Hf)
-  - MP correction scheme applied automatically by the API
+Keeps non-elemental compounds with Hf < 1 eV/atom, one ground-state entry per
+formula. MP corrections are applied by the API.
 
-Output format (same as mlstabilitytest hullout.json):
-{
-  "formula": {
-    "Hf": float,        # formation energy per atom (eV/atom)
-    "Hd": float,        # decomposition energy per atom (eV/atom); <0 stable, >0 unstable
-    "rxn": str,         # decomposition reaction string
-    "stability": bool   # True if on hull (Hd <= 0)
-  }, ...
-}
+Output matches the mlstabilitytest hullout format: per formula, the formation
+enthalpy Hf and decomposition enthalpy Hd in eV/atom, the decomposition
+reaction string, and a stability flag (Hd <= 0).
 
 Modes
 -----
@@ -41,7 +30,6 @@ Usage
 
 import argparse
 import json
-import math
 import os
 import re
 import time
@@ -61,9 +49,8 @@ def format_rxn(decomposes_to) -> str:
             return Composition(f).reduced_formula
     except ImportError:
         def normalize(f):
-            import re
             f = f.replace(" ", "")
-            f = re.sub(r'([A-Za-z])1([A-Z]|$)', r'\1\2', f) # Remove '1' only when between element symbols or at end
+            f = re.sub(r"([A-Za-z])1([A-Z]|$)", r"\1\2", f) # Remove '1' only when between element symbols or at end
             return f
 
     parts = []
@@ -77,7 +64,7 @@ def format_rxn(decomposes_to) -> str:
 def is_elemental(formula: str) -> bool:
     """Return True if formula contains only one distinct element."""
     # Strip numbers/spaces; if only one token remains -> elemental
-    tokens = re.findall(r'[A-Z][a-z]?', formula)
+    tokens = re.findall(r"[A-Z][a-z]?", formula)
     return len(set(tokens)) == 1
 
 
@@ -96,16 +83,13 @@ def parse_args():
     return p.parse_args()
 
 
-# Fast mode
+# -- Fast mode ------------------------------------------------------------
 
 def download_fast(api_key, hf_cutoff=1.0, limit=None):
-    """
-    Two-step fast download:
-      1. mpr.summary.search() → get all ground-state Hf values
-      2. mpr.thermo.search()  → get pre-computed Hd, rxn strings, stability
+    """Download Hf from the summary endpoint and Hd from the thermo endpoint.
 
-    Deduplication: for multiple polymorphs of the same formula, keep
-    the entry with the most negative Hf (ground state).
+    Where several polymorphs share a formula, the one with the most negative
+    Hf is kept as the ground state.
     """
     try:
         from mp_api.client import MPRester
@@ -125,11 +109,11 @@ def download_fast(api_key, hf_cutoff=1.0, limit=None):
             num_chunks=None,
         )
 
-    print(f"  → {len(summary_docs)} entries in {(time.time()-t0)/60:.1f} min")
+    print(f"  -> {len(summary_docs)} entries in {(time.time()-t0)/60:.1f} min")
 
     if limit:
         summary_docs = summary_docs[:limit]
-        print(f"  → limited to {len(summary_docs)} for testing")
+        print(f"  -> limited to {len(summary_docs)} for testing")
 
     print("[fast] Step 2/2: downloading thermo data (filtered to our material IDs)...")
     t0 = time.time()
@@ -137,9 +121,6 @@ def download_fast(api_key, hf_cutoff=1.0, limit=None):
     thermo_fields = ["material_id", "decomposition_enthalpy",
                      "decomposition_enthalpy_decomposes_to", "is_stable"]
 
-    all_mids = [d.material_id for d in summary_docs]
-
-    
     with MPRester(api_key) as mpr:
         thermo_docs = mpr.materials.thermo.search(
             thermo_types=["GGA_GGA+U"], # Filter by GGA/GGA+U only
@@ -147,7 +128,7 @@ def download_fast(api_key, hf_cutoff=1.0, limit=None):
             num_chunks=None,
         )
 
-    print(f"  → {len(thermo_docs)} thermo entries in {(time.time()-t0)/60:.1f} min")
+    print(f"  -> {len(thermo_docs)} thermo entries in {(time.time()-t0)/60:.1f} min")
 
     thermo_map = {td.material_id: td for td in thermo_docs}
 
@@ -172,7 +153,7 @@ def download_fast(api_key, hf_cutoff=1.0, limit=None):
 
         td = thermo_map.get(gs.material_id)
         if td is not None:
-            Ed = td.decomposition_enthalpy 
+            Ed = td.decomposition_enthalpy
             rxn = format_rxn(td.decomposition_enthalpy_decomposes_to) or gs.chemsys or ""
             stable = bool(td.is_stable) if td.is_stable is not None else (Ed is not None and Ed <= 0)
             if Ed is None:
@@ -194,10 +175,10 @@ def download_fast(api_key, hf_cutoff=1.0, limit=None):
         }
 
     if n_no_thermo:
-        print(f"  Warning: {n_no_thermo} formulas had no ThermoDoc → Ed approximated")
+        print(f"  Warning: {n_no_thermo} formulas had no ThermoDoc -> Ed approximated")
 
     n_stable = sum(1 for v in hullout.values() if v["stability"])
-    print(f"  → {len(hullout)} nonelemental formulas "
+    print(f"  -> {len(hullout)} nonelemental formulas "
           f"({n_stable} stable, {len(hullout)-n_stable} unstable)")
     return hullout
 
@@ -205,10 +186,11 @@ def download_fast(api_key, hf_cutoff=1.0, limit=None):
 # Pymatgen mode
 
 def download_pymatgen(api_key, hf_cutoff=1.0, limit=None):
-    """
-    - Hf from PhaseDiagram.get_form_energy_per_atom()
-    - Hd signed: negative for stable, positive for unstable
-    - rxn strings with stoichiometric coefficients (needed for ξ weights)
+    """Rebuild the convex hulls with pymatgen for exact Hd and rxn strings.
+
+    Hf comes from PhaseDiagram.get_form_energy_per_atom(); Hd is signed
+    negative for stable and positive for unstable; the rxn strings carry the
+    stoichiometric coefficients the xi weights need.
     """
     try:
         from mp_api.client import MPRester
@@ -228,12 +210,12 @@ def download_pymatgen(api_key, hf_cutoff=1.0, limit=None):
     all_elements = sorted({el
                            for doc in chemsys_docs
                            for el in doc.chemsys.split("-")})
-    print(f"  → {len(chemsys_docs)} materials, {len(all_elements)} unique elements "
+    print(f"  -> {len(chemsys_docs)} materials, {len(all_elements)} unique elements "
           f"in {(time.time()-t0)/60:.1f} min")
 
     print(f"[pymatgen] Step 2/3: bulk downloading all ComputedEntries "
           f"({len(all_elements)} elements)...")
-    
+
     t0 = time.time()
 
     with MPRester(api_key) as mpr:
@@ -242,11 +224,11 @@ def download_pymatgen(api_key, hf_cutoff=1.0, limit=None):
             compatible_only=True,
         )
 
-    print(f"  → {len(all_entries)} ComputedEntries in {(time.time()-t0)/60:.1f} min")
+    print(f"  -> {len(all_entries)} ComputedEntries in {(time.time()-t0)/60:.1f} min")
 
     if limit:
         all_entries = all_entries[:limit]
-        print(f"  → limited to {len(all_entries)} for testing")
+        print(f"  -> limited to {len(all_entries)} for testing")
 
     print("[pymatgen] Step 3/3: building phase diagrams and extracting Ed/rxn...")
     t0 = time.time()
@@ -285,7 +267,7 @@ def download_pymatgen(api_key, hf_cutoff=1.0, limit=None):
             if not pd_entries:
                 continue
             pd = PhaseDiagram(pd_entries)
-        except Exception as ex:
+        except Exception:
             n_errors += 1
             continue
 

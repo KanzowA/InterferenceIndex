@@ -1,25 +1,28 @@
-"""
-fig2.py
-------------------------
-Figure 2: Two side-by-side panels (cancellation / statistical baseline).
-  (a) exponentially distribution of xi, cancellation baseline
-  (b) statistical baseline (normal distribution of residuals)
+"""Figure 1: xi distributions for a cancelling and a statistical model.
+
+    (a) exponentially decaying xi, a model exploiting error cancellation
+    (b) isotropic residuals, the statistical baseline
 """
 
+import argparse
 import os
-import numpy as np
+
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
 import matplotlib.lines as mlines
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.colors import TwoSlopeNorm
 
-COL_REF = '#6B7280'
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+
+COL_REF = "#6B7280"
 RNG    = np.random.default_rng(1)
 N_VALS = [2, 3, 4, 5, 6, 7, 8, 9, 10]
-N_PER  = int(1e5/len(N_VALS))  
-CMAP   = 'RdBu_r'
-norm   = TwoSlopeNorm(vmin=0, vcenter=1.0, vmax=np.sqrt(10))
+N_PER  = int(1e5/len(N_VALS))
+CMAP   = "RdBu_r"
+NORM   = TwoSlopeNorm(vmin=0, vcenter=1.0, vmax=np.sqrt(10))
 
 _COL_W   = 6.69
 _FIG_W           = 11.0
@@ -28,8 +31,8 @@ _FS    = round(_PT_BODY * _FIG_W / _COL_W)
 _FS_SM = round(_PT_SM   * _FIG_W / _COL_W)
 _FS_LEG, _FS_CB = _FS, _FS
 _FS_PANEL = 30
-plt.rcParams.update({'font.family': 'sans-serif', 'font.size': _FS,
-                     'axes.linewidth': 0.8})
+plt.rcParams.update({"font.family": "sans-serif", "font.size": _FS,
+                     "axes.linewidth": 0.8})
 
 TICK_VALS = [0, 1, 2, 3]
 CIRC_TOP  = 3.3
@@ -38,6 +41,9 @@ HIST_DENS_MAX = 2.6
 HIST_H        = 1.1
 HIST_SCALE    = HIST_H / HIST_DENS_MAX
 FULL_H        = CIRC_TOP + HIST_H
+
+ARC_PHI = np.linspace(0, np.pi / 2, 300)
+
 
 # Dummy data generators
 def gen_cancellation(N, n, rng):
@@ -48,14 +54,16 @@ def gen_statistical(N, n, rng):
     denom = np.sqrt((r ** 2).sum(axis=1))
     return np.abs(r.sum(axis=1)) / np.where(denom < 1e-9, 1e-9, denom)
 
-GEN  = {'cancel': gen_cancellation, 'stat': gen_statistical}
-data = {}
-for key, fn in GEN.items():
-    data[key] = {N: fn(N, N_PER, RNG) for N in N_VALS}
+GEN  = {"cancel": gen_cancellation, "stat": gen_statistical}
 
-arc_phi = np.linspace(0, np.pi / 2, 300)
 
-def draw_panel(ax, key):
+def sample_distributions():
+    """Draw xi samples for both panels, keyed by generator then by N."""
+    return {key: {N: fn(N, N_PER, RNG) for N in N_VALS}
+            for key, fn in GEN.items()}
+
+
+def draw_panel(ax, key, data):
     all_xi   = np.concatenate([data[key][N] for N in N_VALS])
     cmap_obj = plt.get_cmap(CMAP)
 
@@ -64,12 +72,12 @@ def draw_panel(ax, key):
     # Concentric arcs, N labels
     for N in N_VALS:
         R = np.sqrt(N)
-        ax.plot(R * np.cos(arc_phi), R * np.sin(arc_phi),
-                color='lightgray', lw=1.0, zorder=0)
+        ax.plot(R * np.cos(ARC_PHI), R * np.sin(ARC_PHI),
+                color="lightgray", lw=1.0, zorder=0)
         ax.text(R * np.cos(0.24) + 0.01 - R * 0.003,
                 R * np.sin(0.24),
-                f'N={N}', color='gray', fontsize=_FS_SM + 1,
-                va='top', ha='left', rotation=-80)
+                f"N={N}", color="gray", fontsize=_FS_SM + 1,
+                va="top", ha="left", rotation=-80)
 
     # Scatter coloured by xi
     all_x, all_y = [], []
@@ -78,17 +86,17 @@ def draw_panel(ax, key):
         delta = np.sqrt(np.maximum(N - xi ** 2, 0))
         all_x.extend(xi)
         all_y.extend(delta)
-    ax.scatter(all_x, all_y, c=all_xi, cmap=CMAP, norm=norm,
+    ax.scatter(all_x, all_y, c=all_xi, cmap=CMAP, norm=NORM,
                s=10, alpha=0.35, zorder=3)
 
-    # Per-N RMS-xi diamonds — computed from the sampled data
+    # Per-N RMS-xi diamonds - computed from the sampled data
     for N in N_VALS:
         xi_N = np.clip(data[key][N], 0, np.sqrt(N))
         m    = np.sqrt(np.mean(xi_N ** 2))
         md   = np.sqrt(max(N - m ** 2, 0))
-        ax.scatter([m], [md], color='black', s=30, marker='D', zorder=5)
+        ax.scatter([m], [md], color="black", s=30, marker="D", zorder=5)
 
-    # Histogram bars — bin the 1e5 sampled points directly
+    # Histogram bars - bin the 1e5 sampled points directly
     edges = np.arange(0, CIRC_TOP + 0.1, 0.1)
     counts, _ = np.histogram(all_xi, bins=edges, density=True)
 
@@ -96,8 +104,8 @@ def draw_panel(ax, key):
         xi_mid = (left + right) / 2
         bar_h  = h * HIST_SCALE
         ax.bar(left, bar_h, width=right - left, bottom=CIRC_TOP,
-               color=cmap_obj(norm(xi_mid)),
-               align='edge', edgecolor='none', alpha=0.85,
+               color=cmap_obj(NORM(xi_mid)),
+               align="edge", edgecolor="none", alpha=0.85,
                zorder=3, clip_on=False)
 
     # Reference lines
@@ -109,66 +117,70 @@ def draw_panel(ax, key):
 
     xi1_top = _vline_top(1.0)
     rms_top = _vline_top(xi_rms)
-    ax.plot([1.0, 1.0], [0, xi1_top], color=COL_REF, lw=0.9, ls=':',
+    ax.plot([1.0, 1.0], [0, xi1_top], color=COL_REF, lw=0.9, ls=":",
             alpha=0.7, zorder=4, clip_on=False)
-    ax.plot([xi_rms, xi_rms], [0, rms_top], color='black', lw=1.2, ls='--',
+    ax.plot([xi_rms, xi_rms], [0, rms_top], color="black", lw=1.2, ls="--",
             zorder=5, clip_on=False)
-    ax.text(0.98, 0.98, r'$\xi_\mathrm{rms} =' + rf'{xi_rms:.2f}$',
-            transform=ax.transAxes, fontsize=_FS_SM, ha='right', va='top')
+    ax.text(0.98, 0.98, r"$\xi_\mathrm{rms} =" + rf"{xi_rms:.2f}$",
+            transform=ax.transAxes, fontsize=_FS_SM, ha="right", va="top")
 
     ax.set_xlim(0, CIRC_TOP)
     ax.set_ylim(0, CIRC_TOP)
     ax.set_xticks(TICK_VALS)
     ax.set_yticks(TICK_VALS)
-    ax.set_xlabel(r'$\xi = \sqrt{N}\cos\varphi$', fontsize=_FS)
-    ax.set_ylabel(r'$\eta = \sqrt{N}\sin\varphi$', fontsize=_FS)
-    ax.set_aspect('equal')
+    ax.set_xlabel(r"$\xi = \sqrt{N}\cos\varphi$", fontsize=_FS)
+    ax.set_ylabel(r"$\eta = \sqrt{N}\sin\varphi$", fontsize=_FS)
+    ax.set_aspect("equal")
 
-# Figure
-fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(6.5, 13))
-fig.subplots_adjust(hspace=0.35)
 
-draw_panel(ax_a, 'cancel')
-draw_panel(ax_b, 'stat')
+def build_figure():
+    """Assemble the two-panel figure and return it."""
+    data = sample_distributions()
 
-ax_a.set_xlabel('')
-ax_a.tick_params(labelbottom=False)
+    fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(6.5, 13))
+    fig.subplots_adjust(hspace=0.35)
 
-_leg_handles = [
-    mlines.Line2D([], [], color='black', marker='D', markersize=5,
-                  linestyle='None', label=r'$\xi_\mathrm{rms}(N)$'),
-    mlines.Line2D([], [], color=COL_REF, lw=0.9, ls=':', alpha=0.7,
-                  label=r'$\xi = 1$'),
-    mlines.Line2D([], [], color='black', lw=1.2, ls='--',
-                  label=r'$\xi_\mathrm{rms}$'),
-]
-fig.legend(handles=_leg_handles, loc='lower center', ncol=3,
-           fontsize=_FS_LEG, framealpha=0.9, bbox_to_anchor=(0.5, 0.025))
+    draw_panel(ax_a, "cancel", data)
+    draw_panel(ax_b, "stat", data)
 
-cbar_ax = fig.add_axes([0.15, -0.015, 0.70, 0.012])
-sm = plt.cm.ScalarMappable(cmap=CMAP, norm=norm)
-sm.set_array([])
-cbar = fig.colorbar(sm, cax=cbar_ax, orientation='horizontal')
-cbar.set_label(r'$\xi$', fontsize=_FS_CB)
-cbar.set_ticks([0, 1, np.sqrt(10)])
-cbar.set_ticklabels(['0', '1', r'$\sqrt{10}$'])
+    ax_a.set_xlabel("")
+    ax_a.tick_params(labelbottom=False)
 
-for ax, lbl in [(ax_a, 'a'), (ax_b, 'b')]:
-    ax.text(-0.18, 1.15, lbl, transform=ax.transAxes,
-            fontsize=_FS_PANEL, fontweight='bold', va='bottom', ha='left', clip_on=False)
+    leg_handles = [
+        mlines.Line2D([], [], color="black", marker="D", markersize=5,
+                      linestyle="None", label=r"$\xi_\mathrm{rms}(N)$"),
+        mlines.Line2D([], [], color=COL_REF, lw=0.9, ls=":", alpha=0.7,
+                      label=r"$\xi = 1$"),
+        mlines.Line2D([], [], color="black", lw=1.2, ls="--",
+                      label=r"$\xi_\mathrm{rms}$"),
+    ]
+    fig.legend(handles=leg_handles, loc="lower center", ncol=3,
+               fontsize=_FS_LEG, framealpha=0.9, bbox_to_anchor=(0.5, 0.025))
 
-plt.tight_layout(rect=[0, 0.07, 1, 1])
+    cbar_ax = fig.add_axes([0.15, -0.015, 0.70, 0.012])
+    sm = plt.cm.ScalarMappable(cmap=CMAP, norm=NORM)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
+    cbar.set_label(r"$\xi$", fontsize=_FS_CB)
+    cbar.set_ticks([0, 1, np.sqrt(10)])
+    cbar.set_ticklabels(["0", "1", r"$\sqrt{10}$"])
+
+    for ax, lbl in [(ax_a, "a"), (ax_b, "b")]:
+        ax.text(-0.18, 1.15, lbl, transform=ax.transAxes,
+                fontsize=_FS_PANEL, fontweight="bold", va="bottom", ha="left", clip_on=False)
+
+    plt.tight_layout(rect=[0, 0.07, 1, 1])
+    return fig
 
 
 def main():
-    import argparse
-    _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default=os.path.join(_REPO, "figures", "figure1.png"))
+    parser.add_argument("--out", default=os.path.join(REPO_ROOT, "figures", "figure1.png"))
     args = parser.parse_args()
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    build_figure()
     plt.savefig(args.out, dpi=300, bbox_inches="tight")
-    print(f"Saved → {args.out}")
+    print(f"Saved >> {args.out}")
 
 
 if __name__ == "__main__":

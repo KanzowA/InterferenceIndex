@@ -1,8 +1,7 @@
-"""
-HdLossNN — ElementFraction MLP trained with a normalised MSE + Hd^2 loss.
-"""
+"""HdLossNN - ElementFraction MLP trained with a normalised MSE + Hd^2 loss."""
 
 import os
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,52 +12,49 @@ from .iiLossNN import (
 
 
 class HdLossNN(iiLossNN):
-    """
-    ElementFraction MLP with normalised Hd^2-regularised loss.
+    """ElementFraction MLP trained with a normalised MSE + Hd^2 loss.
 
     Parameters
     ----------
     target : str
-        Regression target key ('Hf' or 'Hd').
+        Regression target key, 'Hf' or 'Hd'.
     lam : float
-        Weight of Hd^2 loss term (0 = pure MSE, 1 = pure Hd^2).
+        Weight of the Hd^2 term; 0 is pure MSE, 1 is pure Hd^2.
     eps : float
-        Stabiliser added to Hd^2_ref denominator (eV^2/atom^2).
+        Stabiliser added to the Hd^2 reference denominator, in eV^2/atom^2.
     hidden : tuple of int
-        Hidden layer widths. Default: (1024, 512, 256, 128).
+        Hidden layer widths.
     dropout : float
-        Dropout probability. Default: 0.0.
+        Dropout probability; 0 disables it.
     lr : float
         Adam initial learning rate.
     epochs : int
-        Total training epochs (full-batch).
+        Total training epochs, full-batch.
     warmup_frac : float
-        Fraction of epochs to train with λ=0 (pure MSE warmup).
+        Fraction of epochs held at lam=0 before ramping to the target lam.
     renorm_every : int
-        Recompute MSE_ref and Hd^2_ref every N epochs (0 = never after init).
+        Recompute the loss reference scales every N epochs; 0 fixes them.
     grad_clip : float
-        Max gradient norm (0 = no clipping).
+        Maximum gradient norm; 0 disables clipping.
     device : str or None
-        'cuda', 'cpu', or None (auto-detect).
-
-    Two-stage fine-tuning parameters (mirror iiLossNN):
+        'cuda', 'cpu', or None to auto-detect.
     checkpoint_dir : str or None
-        Save per-fold weights here after stage-1 training.
+        Directory to write per-fold weights to after stage-one training.
     finetune_from : str or None
-        Load per-fold weights from here at the start of stage-2.
+        Directory to load per-fold stage-one weights from.
     finetune_lr : float
-        Learning rate for fine-tuning stage.
+        Learning rate used when fine-tuning.
     finetune_epochs : int
-        Number of epochs for fine-tuning stage.
+        Epoch count used when fine-tuning.
     use_pcgrad : bool
-        If True, project Hd² gradient orthogonal to MSE gradient each step.
+        Project the Hd^2 gradient orthogonal to the MSE gradient each step.
     """
 
-    model_type = 'ed_nn'
+    model_type = "ed_nn"
 
     def __init__(
         self,
-        target          = 'Hf',
+        target          = "Hf",
         lam           = 0.1,
         eps             = 1e-4,
         hidden          = (1024, 512, 256, 128),
@@ -97,10 +93,10 @@ class HdLossNN(iiLossNN):
         )
         self.lam = lam
 
-    # reference computation
+    # -- Reference computation --------------------------------------------
 
     def _compute_refs(self, X_t, Y_t, R_idx, R_coeff, R_mask, has_rxn, dev):
-        """Compute MSE_ref and Hd^2_ref from current model predictions."""
+        """Loss reference scales taken at the current model state."""
         var_y = Y_t.var(unbiased=False).clamp(min=1e-6)
         with torch.no_grad():
             pred0   = self._net(X_t)
@@ -108,36 +104,33 @@ class HdLossNN(iiLossNN):
             mse_ref = (delta0 ** 2).mean().clamp(min=var_y)
 
             if has_rxn:
-                c0       = R_coeff * delta0[R_idx] * R_mask   # (M, K)
-                hd_resid = c0.sum(dim=1)                       # (M,)
+                c0       = R_coeff * delta0[R_idx] * R_mask
+                hd_resid = c0.sum(dim=1)
                 hd2_ref  = (hd_resid ** 2).mean().clamp(min=1e-6)
             else:
                 hd2_ref = torch.ones(1, device=dev).squeeze()
 
         return mse_ref, hd2_ref
 
-    # training loop
+    # -- Training loop ----------------------------------------------------
 
     def fit(self, X, Y):
         dev = torch.device(self.device)
 
-        # fold tracking (for checkpoint filenames)
         fold_idx = self._fold_counter
         self._fold_counter += 1
 
-        # unpack index column
         train_indices = X[:, 0].astype(int)
         X_feat        = X[:, 1:].astype(np.float32)
 
         train_labels  = self._labels[train_indices]
         label_to_pos  = {lbl: i for i, lbl in enumerate(train_labels)}
 
-        # build reaction tensors
         R_idx_list, R_coeff_list, R_mask_list = [], [], []
 
         for lbl in train_labels:
             entry   = self._data.get(lbl, {})
-            rxn_str = entry.get('rxn', '')
+            rxn_str = entry.get("rxn", "")
             if not rxn_str:
                 continue
             pairs = _parse_rxn(rxn_str, label_to_pos)
@@ -167,7 +160,7 @@ class HdLossNN(iiLossNN):
             has_rxn = True
         else:
             has_rxn = False
-            print("  [HdLossNN] Warning: no reactions in fold — pure MSE.")
+            print("  [HdLossNN] Warning: no reactions in fold - pure MSE.")
 
         # Network
         input_dim = X_feat.shape[1]
@@ -245,16 +238,17 @@ class HdLossNN(iiLossNN):
 
                 # MSE gradient
                 optimizer.zero_grad()
-                pred  = self._net(X_t); delta = pred - Y_t
+                pred  = self._net(X_t)
+                delta = pred - Y_t
                 mse_loss = (delta ** 2).mean() / mse_ref
                 mse_loss.backward()
                 g_mse = [p.grad.detach().clone()
                          if p.grad is not None else torch.zeros_like(p)
                          for p in self._net.parameters()]
 
-                # Hd^2 gradient
                 optimizer.zero_grad()
-                pred  = self._net(X_t); delta = pred - Y_t
+                pred  = self._net(X_t)
+                delta = pred - Y_t
                 c        = R_coeff * delta[R_idx] * R_mask
                 hd_resid = c.sum(dim=1)
                 ed_loss  = (hd_resid ** 2).mean() / hd2_ref
@@ -263,13 +257,13 @@ class HdLossNN(iiLossNN):
                         if p.grad is not None else torch.zeros_like(p)
                         for p in self._net.parameters()]
 
-                # Project g_Hd orthogonal to g_mse
+                # Remove the part of the Hd^2 gradient that opposes the MSE
+                # gradient in parameter space.
                 dot   = sum((a * b).sum() for a, b in zip(g_ed,  g_mse))
                 norm2 = sum((b * b).sum() for b in g_mse).clamp(min=1e-12)
                 g_ed_proj = [a - (dot / norm2) * b
                              for a, b in zip(g_ed, g_mse)]
 
-                # Apply combined gradient
                 optimizer.zero_grad()
                 for p, gm, gp in zip(self._net.parameters(), g_mse, g_ed_proj):
                     p.grad = (1.0 - lam_eff) * gm + lam_eff * gp
@@ -279,10 +273,9 @@ class HdLossNN(iiLossNN):
                         self._net.parameters(), self.grad_clip)
                 optimizer.step()
 
-                loss     = mse_loss  # for logging
+                loss     = mse_loss  # logging only
                 ed_log   = ed_loss
 
-            # standard path
             else:
                 optimizer.zero_grad()
                 pred  = self._net(X_t)
@@ -310,21 +303,20 @@ class HdLossNN(iiLossNN):
             scheduler.step()
 
             if epoch % 50 == 0 or epoch == actual_epochs - 1:
-                phase = ('warmup' if epoch < warmup_end
-                         else 'ramp' if epoch < ramp_end
-                         else 'train')
-                mode  = 'pcgrad' if self.use_pcgrad else 'std'
-                msg   = (f'  [HdLossNN/{mode}] ep {epoch:>4d} [{phase}] '
-                         f'loss={loss.item():.5f}  '
-                         f'MSE/ref={mse_loss.item():.5f}  '
-                         f'lam_eff={lam_eff:.3f}')
+                phase = ("warmup" if epoch < warmup_end
+                         else "ramp" if epoch < ramp_end
+                         else "train")
+                mode  = "pcgrad" if self.use_pcgrad else "std"
+                msg   = (f"  [HdLossNN/{mode}] ep {epoch:>4d} [{phase}] "
+                         f"loss={loss.item():.5f}  "
+                         f"MSE/ref={mse_loss.item():.5f}  "
+                         f"lam_eff={lam_eff:.3f}")
                 if lam_eff > 0 and has_rxn:
-                    msg += f'  Hd²/ref={ed_log.item():.5f}'
+                    msg += f"  Hd^2/ref={ed_log.item():.5f}"
                 print(msg)
 
         self._net.eval()
 
-        # Stage-1: Save checkpoint
         if self.checkpoint_dir is not None:
             os.makedirs(self.checkpoint_dir, exist_ok=True)
             ckpt_path = os.path.join(

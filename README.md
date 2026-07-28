@@ -58,10 +58,10 @@ pip install -e .
 **1. Train models** (GPU recommend, but also works on CPU; runs 5-fold CV on the 2026 MP dataset):
 ```bash
 # iiLoss sweep
-bash scripts/sweep.sh iiLoss
+bash scripts/sweep.sh Hf iiLoss
 
 # HdLoss + PCGrad sweep
-bash scripts/sweep.sh HdLoss pcgrad
+bash scripts/sweep.sh Hf HdLoss pcgrad
 ```
 
 **2. Compute interference scores:**

@@ -1,12 +1,9 @@
-"""
-generate_figures.py
--------------------
-Reproduces all paper figures from pre-computed results.
-Outputs are written to figures/.
+"""Regenerate the paper figures from pre-computed results into figures/.
 
-Usage:
-    python generate_figures.py           # generate all figures
-    python generate_figures.py --fig 4   # generate a specific figure
+Usage
+-----
+    python scripts/generate_figures.py           # all figures
+    python scripts/generate_figures.py --fig 4   # one figure
 """
 
 import argparse
@@ -18,14 +15,14 @@ FIGURES = [
     (1, "Interference circles (conceptual)",
         "scripts/figures/fig1.py", []),
 
-    (2, "Model comparison — interference scores on allMP",
+    (2, "Model comparison - interference scores on allMP",
         "scripts/figures/fig2.py",
         ["--csv", "results/2020/interference_scores_2020.csv"]),
 
     (3, "Gradient field panel",
         "scripts/figures/fig3.py", []),
 
-    (4, "Lambda sweep — iiLoss / HdLoss / PCGrad",
+    (4, "Lambda sweep - iiLoss / HdLoss / PCGrad",
         "scripts/figures/fig4.py",
         ["--csv", "results/2026/interference_summary_2026.csv"]),
 ]
@@ -40,19 +37,19 @@ def run(fig_num=None):
 
         path = Path(script)
         if not path.exists():
-            print(f"\n[Fig. {num}] SKIP — {script} not found")
+            print(f"\n[Fig. {num}] SKIP - {script} not found")
             skipped.append(num)
             continue
 
         print(f"\n{'='*60}")
-        print(f"  Fig. {num} — {label}")
+        print(f"  Fig. {num} - {label}")
         print(f"{'='*60}")
 
         cmd = [sys.executable, script] + extra
         ret = subprocess.run(cmd, check=False)
 
         if ret.returncode == 0:
-            print(f"  [OK]")
+            print("  [OK]")
             ok.append(num)
         else:
             print(f"  [FAILED] exit code {ret.returncode}")
