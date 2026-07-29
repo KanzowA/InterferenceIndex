@@ -10,6 +10,7 @@ Sections
     lam        lam sweep per loss, against that width's matched lam=0 control
     surgery    no surgery vs unconditional vs conditional PCGrad at one lam
     capacity   lam=0 ladder, and the relative gain at each width
+    grid       one metric as widths x lam, for both losses
     matched    capacity models paired with iiLoss runs of similar Hf accuracy
     table2     the Table 2 row set, mean +/- sd
 
@@ -133,6 +134,36 @@ def section_capacity(groups, lams):
               f"{stat(groups, name, 'rms_xi')[0]:>12.4f}")
 
 
+def section_grid(groups, lams, metric):
+    """One metric, all widths against all lam values, for both losses.
+
+    The compact view: rows are widths, columns are lam. Reading across a row
+    gives that width's lam response; reading down a column gives the capacity
+    dependence at fixed lam.
+    """
+    for loss in ["iiLoss_finetune", "HdLoss_finetune"]:
+        rows = []
+        for w in sorted(PARAMS):
+            suffix = "" if w == 1024 else f"_w{w}"
+            base = f"{loss}_0.0{suffix}"
+            if base not in groups:
+                continue
+            cells = [f"{stat(groups, base, metric)[0]:.4f}"]
+            for lam in lams:
+                name = f"{loss}_{lam}{suffix}"
+                cells.append(f"{stat(groups, name, metric)[0]:.4f}"
+                             if name in groups else "".rjust(6))
+            rows.append((w, cells))
+        if not rows:
+            continue
+        print(f"\n{loss}  -  {metric}")
+        head = "".join(f"{'lam=' + l:>9}" for l in ["0.0"] + lams)
+        print(f"  {'width':>7}{'ratio':>8}{head}")
+        for w, cells in rows:
+            body = "".join(f"{c:>9}" for c in cells)
+            print(f"  {w:>7}{PARAMS[w] / N_TRAIN:>8.2f}{body}")
+
+
 def section_matched(groups, lams, base_width):
     """Pair each iiLoss run with the capacity model of most similar Hf_MAE.
 
@@ -183,7 +214,9 @@ def main():
                         help="operating point for the surgery and table2 sections")
     parser.add_argument("--section", default="all",
                         choices=["all", "lam", "surgery", "capacity",
-                                 "matched", "table2"])
+                                 "grid", "matched", "table2"])
+    parser.add_argument("--metric", default="F1", choices=METRICS,
+                        help="metric shown by the grid section")
     args = parser.parse_args()
 
     lams = ["0.1", "0.2", "0.3", "0.4", "0.5"]
@@ -196,6 +229,8 @@ def main():
         section_surgery(groups, args.width, args.lam)
     if args.section in ("all", "capacity"):
         section_capacity(groups, lams)
+    if args.section in ("all", "grid"):
+        section_grid(groups, lams, args.metric)
     if args.section in ("all", "matched"):
         section_matched(groups, lams, args.width)
     if args.section in ("all", "table2"):
