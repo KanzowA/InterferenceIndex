@@ -121,6 +121,9 @@ class iiLossNN(nn.Module):
         Epoch count used when fine-tuning.
     use_pcgrad : bool
         Project the xi^2 gradient orthogonal to the MSE gradient each step.
+    pcgrad_conditional : bool
+        Project only on steps where the two gradients conflict, as in the
+        published PCGrad rule. Ignored unless use_pcgrad is set.
     seed : int
         Base seed. Each fold derives its own RNG state from (seed, fold).
     history_path : str or None
@@ -147,6 +150,7 @@ class iiLossNN(nn.Module):
         finetune_lr     = 1e-4,
         finetune_epochs = 200,
         use_pcgrad      = False,
+        pcgrad_conditional = False,
         seed            = 0,
         history_path    = None,
     ):
@@ -168,6 +172,7 @@ class iiLossNN(nn.Module):
         self.finetune_lr     = finetune_lr
         self.finetune_epochs = finetune_epochs
         self.use_pcgrad      = use_pcgrad
+        self.pcgrad_conditional = pcgrad_conditional
         self.seed            = seed
         self.history_path    = history_path
         self.history         = []
@@ -353,10 +358,15 @@ class iiLossNN(nn.Module):
                         for p in self._net.parameters()]
 
                 # Remove the part of the xi^2 gradient that opposes the MSE
-                # gradient in parameter space.
+                # gradient in parameter space. In the conditional form the
+                # projection is applied only when the two gradients conflict.
                 dot   = sum((a * b).sum() for a, b in zip(g_xi, g_mse))
                 norm2 = sum((b * b).sum() for b in g_mse).clamp(min=1e-12)
-                g_xi_proj = [a - (dot / norm2) * b for a, b in zip(g_xi, g_mse)]
+                if self.pcgrad_conditional and dot >= 0:
+                    g_xi_proj = g_xi
+                else:
+                    g_xi_proj = [a - (dot / norm2) * b
+                                 for a, b in zip(g_xi, g_mse)]
 
                 optimizer.zero_grad()
                 for p, gm, gp in zip(self._net.parameters(), g_mse, g_xi_proj):

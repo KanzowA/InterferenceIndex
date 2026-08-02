@@ -76,6 +76,23 @@ class _ModelDict(dict):
                 )
             except (ValueError, IndexError):
                 pass
+        # Stage 2 with gradient surgery applied only on conflicting steps.
+        if key.startswith("iiLoss_pcgradc_"):
+            try:
+                lam = float(key.rsplit("_", 1)[1])
+                return lambda target, seed=0, hidden=None, l=lam: iiLossNN(
+                    target, lam=l, seed=seed,
+                    hidden=hidden or hidden_from_base(DEFAULT_BASE_WIDTH),
+                    finetune_from=os.path.join(_CHECKPOINT_DIR, target),
+                    finetune_lr=1e-4,
+                    finetune_epochs=200,
+                    warmup_frac=0.0,
+                    renorm_every=0,
+                    use_pcgrad=True,
+                    pcgrad_conditional=True,
+                )
+            except (ValueError, IndexError):
+                pass
         # Single-stage training.
         if key.startswith("iiLoss_"):
             try:
@@ -127,6 +144,7 @@ class _ModelDict(dict):
                 pass
         known = list(self.keys()) + ["iiLoss_<lam>", "iiLoss_save_<lam>",
                                      "iiLoss_finetune_<lam>", "iiLoss_pcgrad_<lam>",
+                                     "iiLoss_pcgradc_<lam>",
                                      "HdLoss_<alpha>", "HdLoss_finetune_<alpha>",
                                      "HdLoss_pcgrad_<alpha>"]
         raise KeyError(f"Unknown model '{key}'. Available: {known}")
