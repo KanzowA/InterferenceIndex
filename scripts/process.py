@@ -45,6 +45,23 @@ class _ModelDict(dict):
                 )
             except (ValueError, IndexError):
                 pass
+        # Stage 2 with a non-default denominator stabiliser, for the
+        # sensitivity check: "iiLoss_finetune_eps1e-3_0.2".
+        if key.startswith("iiLoss_finetune_eps"):
+            try:
+                eps_tag, lam_tag = key[len("iiLoss_finetune_eps"):].split("_")
+                eps, lam = float(eps_tag), float(lam_tag)
+                return lambda target, seed=0, hidden=None, l=lam, e=eps: iiLossNN(
+                    target, lam=l, eps=e, seed=seed,
+                    hidden=hidden or hidden_from_base(DEFAULT_BASE_WIDTH),
+                    finetune_from=os.path.join(_CHECKPOINT_DIR, target),
+                    finetune_lr=1e-4,
+                    finetune_epochs=200,
+                    warmup_frac=0.0,
+                    renorm_every=0,
+                )
+            except (ValueError, IndexError):
+                pass
         # Stage 2: reload the checkpoint and fine-tune with lam.
         if key.startswith("iiLoss_finetune_"):
             try:
@@ -145,6 +162,7 @@ class _ModelDict(dict):
         known = list(self.keys()) + ["iiLoss_<lam>", "iiLoss_save_<lam>",
                                      "iiLoss_finetune_<lam>", "iiLoss_pcgrad_<lam>",
                                      "iiLoss_pcgradc_<lam>",
+                                     "iiLoss_finetune_eps<eps>_<lam>",
                                      "HdLoss_<alpha>", "HdLoss_finetune_<alpha>",
                                      "HdLoss_pcgrad_<alpha>"]
         raise KeyError(f"Unknown model '{key}'. Available: {known}")
