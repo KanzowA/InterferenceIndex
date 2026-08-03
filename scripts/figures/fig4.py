@@ -65,7 +65,7 @@ METRICS = [
     ("rms_xi", r"$\xi_\mathrm{rms}$"),
 ]
 
-LAM_MAX  = 1.0
+LAM_MAX  = 0.9
 LAM_MARK = 0.2
 
 
