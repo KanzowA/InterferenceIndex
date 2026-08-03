@@ -1,19 +1,22 @@
 """Figure 5: xi distribution before and after interference-aware training.
 
-    (a) matched baseline (lam = 0)   (b) iiLoss at the operating point
+    (a) matched baseline (lam = 0)
+    (b) iiLoss at the operating point (lam = 0.2)
 
-Same polar representation as fig2.py, so the trained model can be read against
-the published models shown there. Rows are pooled over seeds: every run whose
-name is the given stem, with or without an _s<seed> suffix, contributes to the
-same panel.
+Layout follows fig1.py; only the data source differs, so the trained model can
+be read directly against the reference distributions shown there. Rows are
+pooled over seeds: every run whose name is the given stem, with or without an
+_s<seed> suffix, contributes to the same panel.
+
+Arcs and scatter are drawn for N <= 10 to keep the fig1 frame, while
+xi_rms and the reported fraction are computed over all reactions, so they match
+the summary table.
 """
 
 import argparse
 import csv
-import math
 import os
 from collections import defaultdict
-from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
@@ -25,179 +28,186 @@ from matplotlib.colors import TwoSlopeNorm
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 
-# -- Journal style (npj Computational Materials) --------------------------
-# Fonts are scaled so they print at 7 pt (body) and 6 pt (minor) once the
-# figure is reduced to a 170 mm double column.
-_COL_W   = 6.69          # 170 mm in inches
-_FIG_W   = 5.5 * 2 + 0.8
-_FS      = round(7.0 * _FIG_W / _COL_W)
-_FS_SM   = round(6.0 * _FIG_W / _COL_W)
+COL_REF = "#6B7280"
+N_VALS  = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+CMAP    = "RdBu_r"
+NORM    = TwoSlopeNorm(vmin=0, vcenter=1.0, vmax=np.sqrt(10))
+
+_COL_W           = 6.69
+_FIG_W           = 11.0
+_PT_BODY, _PT_SM = 9.0, 7.5
+_FS    = round(_PT_BODY * _FIG_W / _COL_W)
+_FS_SM = round(_PT_SM   * _FIG_W / _COL_W)
 _FS_LEG, _FS_CB = _FS, _FS
-_FS_PANEL = 20
+_FS_PANEL = 30
 plt.rcParams.update({"font.family": "sans-serif", "font.size": _FS,
                      "axes.linewidth": 0.8})
 
-_CMAP    = "RdBu_r"
-_COL_REF = "#6B7280"
+TICK_VALS = [0, 1, 2, 3]
+CIRC_TOP  = 3.3
+
+HIST_DENS_MAX = 2.6
+HIST_H        = 1.1
+HIST_SCALE    = HIST_H / HIST_DENS_MAX
+FULL_H        = CIRC_TOP + HIST_H
+
+ARC_PHI = np.linspace(0, np.pi / 2, 300)
 
 DEFAULT_STEMS  = ["iiLoss_finetune_0.0", "iiLoss_finetune_0.2"]
 DEFAULT_LABELS = [r"baseline ($\lambda=0$)", r"iiLoss ($\lambda=0.2$)"]
 
-BIN_W = 0.1
 
-
-# -- Helpers --------------------------------------------------------------
 def _stem_of(name):
     """Drop a trailing _s<seed> so all seeds of one run pool together."""
     head, _, tail = name.rpartition("_s")
     return head if head and tail.isdigit() else name
 
 
-def load_scores(csv_path: str, stems: list) -> dict:
-    """Load per-reaction rows from interference_scores_<year>.csv by stem."""
+def load_distributions(csv_path, stems):
+    """Return {stem: {"per_N": {N: xi array}, "all": xi array}}."""
     wanted = set(stems)
-    by_stem = defaultdict(list)
+    per_stem = {s: defaultdict(list) for s in stems}
+    every    = {s: [] for s in stems}
     with open(csv_path, newline="") as f:
         for row in csv.DictReader(f):
             stem = _stem_of(row["model"])
-            if stem in wanted:
-                by_stem[stem].append({
-                    "xi_err":  float(row["xi_err"]),
-                    "eta_err": float(row["eta_err"]),
-                    "N":       int(row["N"]),
-                })
-    return by_stem
+            if stem not in wanted:
+                continue
+            xi = float(row["xi_err"])
+            every[stem].append(xi)
+            N = int(row["N"])
+            if N in N_VALS:
+                per_stem[stem][N].append(xi)
+    data = {}
+    for s in stems:
+        if not every[s]:
+            continue
+        data[s] = {"per_N": {N: np.array(v) for N, v in per_stem[s].items()},
+                   "all":   np.array(every[s])}
+    return data
 
 
-def _draw_panel(ax, rows, norm, cmap_obj, lim, hist_scale, arc_phi, tick_vals):
-    Ns     = np.array([r["N"]       for r in rows])
-    xis    = np.array([r["xi_err"]  for r in rows])
-    etas   = np.array([r["eta_err"] for r in rows])
+def draw_panel(ax, entry):
+    per_N    = entry["per_N"]
+    all_xi   = entry["all"]
+    cmap_obj = plt.get_cmap(CMAP)
 
-    for N_val in sorted(set(Ns)):
-        R = math.sqrt(N_val)
-        ax.plot(R * np.cos(arc_phi), R * np.sin(arc_phi),
+    xi_rms     = np.sqrt(np.mean(all_xi ** 2))
+    frac_below = float(np.mean(all_xi < 1.0))
+
+    # Concentric arcs, N labels
+    for N in N_VALS:
+        R = np.sqrt(N)
+        ax.plot(R * np.cos(ARC_PHI), R * np.sin(ARC_PHI),
                 color="lightgray", lw=1.0, zorder=0)
-        ax.text(R * np.cos(0.24) + 0.01 - R * 0.01, R * np.sin(0.24),
-                f"{N_val}", color="gray", fontsize=_FS_SM * 0.6,
+        ax.text(R * np.cos(0.24) + 0.01 - R * 0.003,
+                R * np.sin(0.24),
+                f"N={N}", color="gray", fontsize=_FS_SM + 1,
                 va="top", ha="left", rotation=-80)
 
-    ax.scatter(xis, etas, c=xis, cmap=_CMAP, norm=norm,
+    # Scatter coloured by xi
+    all_x, all_y, all_c = [], [], []
+    for N in N_VALS:
+        xi = np.clip(per_N.get(N, np.array([])), 0, np.sqrt(N))
+        if xi.size == 0:
+            continue
+        delta = np.sqrt(np.maximum(N - xi ** 2, 0))
+        all_x.extend(xi)
+        all_y.extend(delta)
+        all_c.extend(xi)
+    ax.scatter(all_x, all_y, c=all_c, cmap=CMAP, norm=NORM,
                s=10, alpha=0.35, zorder=3)
 
-    for N_val in sorted(set(Ns)):
-        xis_N = xis[Ns == N_val]
-        rms_N = math.sqrt(float(np.mean(xis_N ** 2)))
-        eta_N = math.sqrt(max(N_val - rms_N ** 2, 0))
-        ax.scatter([rms_N], [eta_N], color="black", s=30, marker="D", zorder=5)
+    # Per-N RMS-xi diamonds
+    for N in N_VALS:
+        xi_N = np.clip(per_N.get(N, np.array([])), 0, np.sqrt(N))
+        if xi_N.size == 0:
+            continue
+        m  = np.sqrt(np.mean(xi_N ** 2))
+        md = np.sqrt(max(N - m ** 2, 0))
+        ax.scatter([m], [md], color="black", s=30, marker="D", zorder=5)
 
-    rms_xi = math.sqrt(float(np.mean(xis ** 2)))
-    # Share of reactions cancelling more strongly than the isotropic
-    # reference. Unlike a mean or median of xi, this is stated against the
-    # size-invariant value xi = 1 and so remains comparable across N.
-    frac_below = float(np.mean(xis < 1.0))
+    # Histogram bars
+    edges = np.arange(0, CIRC_TOP + 0.1, 0.1)
+    counts, _ = np.histogram(all_xi, bins=edges, density=True)
 
-    counts, edges = np.histogram(xis, bins=np.arange(0, lim + BIN_W, BIN_W),
-                                 density=True)
     for left, right, h in zip(edges[:-1], edges[1:], counts):
-        ax.bar(left, h * hist_scale, width=right - left, bottom=lim,
-               color=cmap_obj(norm((left + right) / 2)),
+        xi_mid = (left + right) / 2
+        bar_h  = h * HIST_SCALE
+        ax.bar(left, bar_h, width=right - left, bottom=CIRC_TOP,
+               color=cmap_obj(NORM(xi_mid)),
                align="edge", edgecolor="none", alpha=0.85,
                zorder=3, clip_on=False)
 
+    # Reference lines
     def _vline_top(x_val):
         for i in range(len(counts)):
             if edges[i] <= x_val < edges[i + 1]:
-                return float(lim + counts[i] * hist_scale)
-        return float(lim)
+                return float(CIRC_TOP + counts[i] * HIST_SCALE)
+        return float(CIRC_TOP)
 
-    ax.plot([1.0, 1.0], [0, _vline_top(1.0)], color=_COL_REF,
-            lw=0.9, ls=":", alpha=0.7, zorder=4, clip_on=False)
-    ax.plot([rms_xi, rms_xi], [0, _vline_top(rms_xi)], color="black",
-            lw=1.2, ls="--", zorder=5, clip_on=False)
-
+    xi1_top = _vline_top(1.0)
+    rms_top = _vline_top(xi_rms)
+    ax.plot([1.0, 1.0], [0, xi1_top], color=COL_REF, lw=0.9, ls=":",
+            alpha=0.7, zorder=4, clip_on=False)
+    ax.plot([xi_rms, xi_rms], [0, rms_top], color="black", lw=1.2, ls="--",
+            zorder=5, clip_on=False)
     ax.text(0.98, 0.98,
-            r"$\xi_\mathrm{rms} =" + rf"{rms_xi:.2f}$" + "\n"
+            r"$\xi_\mathrm{rms} =" + rf"{xi_rms:.2f}$" + "\n"
             + rf"${100 * frac_below:.0f}\%$ at $\xi < 1$",
             transform=ax.transAxes, fontsize=_FS_SM, ha="right", va="top")
 
-    ax.set_xlim(0, lim)
-    ax.set_ylim(0, lim)
-    ax.set_xticks(tick_vals)
-    ax.set_yticks(tick_vals)
+    ax.set_xlim(0, CIRC_TOP)
+    ax.set_ylim(0, CIRC_TOP)
+    ax.set_xticks(TICK_VALS)
+    ax.set_yticks(TICK_VALS)
     ax.set_xlabel(r"$\xi = \sqrt{N}\cos\varphi$", fontsize=_FS)
     ax.set_ylabel(r"$\eta = \sqrt{N}\sin\varphi$", fontsize=_FS)
     ax.set_aspect("equal")
-    ax.tick_params(top=False, right=False)
 
 
-# -- Figure ---------------------------------------------------------------
-def build_figure(by_stem: dict, stems: list, labels: list):
-    present = [s for s in stems if s in by_stem]
-    if not present:
-        raise SystemExit("None of the requested runs are in the scores file")
+def build_figure(data, stems, labels):
+    """Assemble the two-panel figure and return it."""
+    present = [s for s in stems if s in data]
+    if len(present) < 2:
+        raise SystemExit("Need two runs present in the scores file")
 
-    all_N = [r["N"] for s in present for r in by_stem[s]]
-    lim   = math.sqrt(max(all_N)) + 0.2
+    fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(6.5, 13))
+    fig.subplots_adjust(hspace=0.35)
 
-    # One histogram scale across panels, so bar heights are comparable.
-    hist_max = 0.0
-    for s in present:
-        xis = np.array([r["xi_err"] for r in by_stem[s]])
-        counts, _ = np.histogram(xis, bins=np.arange(0, lim + BIN_W, BIN_W),
-                                 density=True)
-        if counts.size:
-            hist_max = max(hist_max, float(counts.max()))
-    hist_scale = (lim * 0.40) / hist_max if hist_max > 0 else 1.0
+    draw_panel(ax_a, data[present[0]])
+    draw_panel(ax_b, data[present[1]])
 
-    norm      = TwoSlopeNorm(vmin=0, vcenter=1.0, vmax=math.sqrt(10))
-    cmap_obj  = plt.get_cmap(_CMAP)
-    arc_phi   = np.linspace(0, np.pi / 2, 300)
-    tick_vals = [t for t in [0, 1, 2, 3] if t <= lim]
+    ax_a.set_xlabel("")
+    ax_a.tick_params(labelbottom=False)
 
-    fig, axes = plt.subplots(1, len(present),
-                             figsize=(5.5 * len(present) + 0.8, 5.8),
-                             squeeze=False)
-    axes = axes[0]
-
-    for ax, stem, label, letter in zip(axes, present, labels, "abcdef"):
-        _draw_panel(ax, by_stem[stem], norm, cmap_obj, lim, hist_scale,
-                    arc_phi, tick_vals)
-        ax.text(1.0, 1.1, label, transform=ax.transAxes, fontsize=_FS,
-                fontweight="bold", ha="right", va="bottom", clip_on=False)
-        ax.text(-0.18, 1.1, letter, transform=ax.transAxes,
-                fontsize=_FS_PANEL, fontweight="bold", va="bottom",
-                ha="left", clip_on=False)
-
-    for ax in axes[1:]:
-        ax.tick_params(labelleft=False)
-        ax.set_ylabel("")
-
-    # -- Shared legend below the panels ------------------------------------
-    handles = [
+    leg_handles = [
         mlines.Line2D([], [], color="black", marker="D", markersize=5,
                       linestyle="None", label=r"$\xi_\mathrm{rms}(N)$"),
-        mlines.Line2D([], [], color=_COL_REF, lw=0.9, ls=":", alpha=0.7,
+        mlines.Line2D([], [], color=COL_REF, lw=0.9, ls=":", alpha=0.7,
                       label=r"$\xi = 1$"),
         mlines.Line2D([], [], color="black", lw=1.2, ls="--",
                       label=r"$\xi_\mathrm{rms}$"),
     ]
-    fig.legend(handles=handles, loc="lower center", ncol=3,
-               fontsize=_FS_LEG, framealpha=0.9, handlelength=2.5,
-               bbox_to_anchor=(0.5, -0.10))
+    fig.legend(handles=leg_handles, loc="lower center", ncol=3,
+               fontsize=_FS_LEG, framealpha=0.9, bbox_to_anchor=(0.5, 0.025))
 
-    plt.tight_layout(w_pad=4.0)
-    fig.subplots_adjust(right=0.88)
-
-    # -- Shared colorbar ---------------------------------------------------
-    cbar_ax = fig.add_axes([0.91, 0.15, 0.018, 0.70])
-    sm = plt.cm.ScalarMappable(cmap=_CMAP, norm=norm)
+    cbar_ax = fig.add_axes([0.15, -0.015, 0.70, 0.012])
+    sm = plt.cm.ScalarMappable(cmap=CMAP, norm=NORM)
     sm.set_array([])
-    cbar = fig.colorbar(sm, cax=cbar_ax)
+    cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
     cbar.set_label(r"$\xi$", fontsize=_FS_CB)
-    cbar.set_ticks([0, 1, math.sqrt(10)])
+    cbar.set_ticks([0, 1, np.sqrt(10)])
     cbar.set_ticklabels(["0", "1", r"$\sqrt{10}$"])
 
+    for ax, lbl, title in [(ax_a, "a", labels[0]), (ax_b, "b", labels[1])]:
+        ax.text(-0.18, 1.15, lbl, transform=ax.transAxes,
+                fontsize=_FS_PANEL, fontweight="bold", va="bottom",
+                ha="left", clip_on=False)
+        ax.text(1.0, 1.15, title, transform=ax.transAxes, fontsize=_FS,
+                fontweight="bold", ha="right", va="bottom", clip_on=False)
+
+    plt.tight_layout(rect=[0, 0.07, 1, 1])
     return fig
 
 
@@ -206,7 +216,7 @@ def main():
     parser.add_argument("--csv", default=os.path.join(
         REPO_ROOT, "results", "2026", "interference_scores_2026.csv"))
     parser.add_argument("--models", nargs="+", default=DEFAULT_STEMS,
-                        help="run names without the _s<seed> suffix")
+                        help="two run names without the _s<seed> suffix")
     parser.add_argument("--labels", nargs="+", default=DEFAULT_LABELS,
                         help="panel titles, one per run")
     parser.add_argument("--out", default=os.path.join(
@@ -217,12 +227,10 @@ def main():
     if len(labels) != len(args.models):
         labels = list(args.models)
 
-    by_stem = load_scores(args.csv, args.models)
-    fig = build_figure(by_stem, args.models, labels)
-
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    data = load_distributions(args.csv, args.models)
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    build_figure(data, args.models, labels)
     plt.savefig(args.out, dpi=300, bbox_inches="tight")
-    plt.close(fig)
     print(f"Saved >> {args.out}")
 
 
