@@ -95,8 +95,9 @@ def draw_panel(ax, entry):
     xi_rms     = np.sqrt(np.mean(all_xi ** 2))
     frac_below = float(np.mean(all_xi < 1.0))
 
-    # Concentric arcs, N labels
-    for N in N_VALS:
+    # Concentric arcs, N labels. Only N values actually present are drawn,
+    # while the frame keeps the fig1 extent so the panels stay comparable.
+    for N in [n for n in N_VALS if per_N.get(n, np.array([])).size]:
         R = np.sqrt(N)
         ax.plot(R * np.cos(ARC_PHI), R * np.sin(ARC_PHI),
                 color="lightgray", lw=1.0, zorder=0)
