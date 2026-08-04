@@ -37,7 +37,7 @@ plt.rcParams.update({
 })
 
 _COL_II  = "#E61D60"
-_COL_HD  = "#1EACE4"
+_COL_HD  = "#1E46E4"
 _COL_REF = "#000000"
 
 # -- Series and panels ----------------------------------------------------
@@ -47,7 +47,7 @@ BASELINE = "iiLoss_finetune_0.0"
 
 # Surgery variants share the colour of their objective and are distinguished by
 # weight and transparency alone, so each pair reads as one comparison.
-_ALPHA_PCGRAD = 0.25
+_ALPHA_PCGRAD = 0.45
 
 SERIES = {
     "iiLoss": dict(prefix="iiLoss_finetune_", color=_COL_II,
