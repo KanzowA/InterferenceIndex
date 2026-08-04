@@ -136,9 +136,9 @@ def build_figure(df):
                         markeredgewidth=0.5, capsize=2, elinewidth=0.8,
                         zorder=(3 if cfg["alpha"] == 1.0 else 2), label=label)
 
-        ax.axvline(LAM_MARK, color="grey", ls="--", lw=0.8, alpha=0.4,
+        ax.axvline(LAM_MARK, color="_COL_REF", ls="--", lw=0.8, alpha=0.4,
                    zorder=1, label=r"$\lambda=%.1f$" % LAM_MARK)
-        ax.axhline(base_m, color="grey", ls="-", lw=1.0, alpha=0.8,
+        ax.axhline(base_m, color="_COL_REF", ls="-", lw=1.0, alpha=0.8,
                    zorder=1, label=r"baseline ($\lambda\!=\!0$)")
         if col == "rms_xi":
             ax.axhline(1.0, color=_COL_REF, ls=":", lw=0.9, alpha=0.6,
