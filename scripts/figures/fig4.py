@@ -3,8 +3,9 @@
     (a) Hf MAE   (b) Hd MAE   (c) F1   (d) xi_rms
 
 Runs are grouped by name with the _s<seed> suffix removed; points are the mean
-over seeds and error bars the sample standard deviation. Passing --surgery adds
-the PCGrad variants, which produces the Supporting Information version.
+over seeds and error bars the sample standard deviation. Each objective is
+shown with and without gradient surgery, the surgery variant in the same colour
+at lower weight and opacity.
 """
 
 import argparse
@@ -44,18 +45,19 @@ _COL_REF = "#6B7280"
 # run, so it anchors each series at lam=0 and sets the baseline line.
 BASELINE = "iiLoss_finetune_0.0"
 
+# Surgery variants share the colour of their objective and are distinguished by
+# weight and transparency alone, so each pair reads as one comparison.
+_ALPHA_PCGRAD = 0.25
+
 SERIES = {
     "iiLoss": dict(prefix="iiLoss_finetune_", color=_COL_II,
-                   marker="s", ls="-", lw=1.8, alpha=1.0),
-    "HdLoss": dict(prefix="HdLoss_finetune_", color=_COL_HD,
-                   marker="o", ls="-", lw=1.8, alpha=1.0),
-}
-
-SURGERY_SERIES = {
+                   marker="s", lw=1.8, ms=5, alpha=1.0),
     "iiLoss + PCGrad": dict(prefix="iiLoss_pcgrad_", color=_COL_II,
-                            marker="s", ls="--", lw=1.3, alpha=0.75),
+                            marker="s", lw=1.0, ms=3.5, alpha=_ALPHA_PCGRAD),
+    "HdLoss": dict(prefix="HdLoss_finetune_", color=_COL_HD,
+                   marker="o", lw=1.8, ms=5, alpha=1.0),
     "HdLoss + PCGrad": dict(prefix="HdLoss_pcgrad_", color=_COL_HD,
-                            marker="o", ls="--", lw=1.3, alpha=0.75),
+                            marker="o", lw=1.0, ms=3.5, alpha=_ALPHA_PCGRAD),
 }
 
 METRICS = [
@@ -106,14 +108,12 @@ def _series_points(groups, prefix, col):
 
 
 # -- Figure ---------------------------------------------------------------
-def build_figure(df, surgery=False):
+def build_figure(df):
     groups = _group_by_stem(df)
     if BASELINE not in groups:
         raise SystemExit(f"{BASELINE} not found in the summary file")
 
-    series = dict(SERIES)
-    if surgery:
-        series.update(SURGERY_SERIES)
+    series = SERIES
 
     fig, axes_2d = plt.subplots(2, 2, figsize=(10, 7), sharex=True)
     fig.subplots_adjust(hspace=0.08, wspace=0.42)
@@ -130,10 +130,11 @@ def build_figure(df, surgery=False):
             val = [base_m] + [p[1] for p in points]
             err = [base_s] + [p[2] for p in points]
             ax.errorbar(lam, val, yerr=err,
-                        color=cfg["color"], ls=cfg["ls"], lw=cfg["lw"],
-                        alpha=cfg["alpha"], marker=cfg["marker"], markersize=5,
-                        markeredgecolor="white", markeredgewidth=0.5,
-                        capsize=2, elinewidth=0.8, zorder=3, label=label)
+                        color=cfg["color"], ls="-", lw=cfg["lw"],
+                        alpha=cfg["alpha"], marker=cfg["marker"],
+                        markersize=cfg["ms"], markeredgecolor="white",
+                        markeredgewidth=0.5, capsize=2, elinewidth=0.8,
+                        zorder=(3 if cfg["alpha"] == 1.0 else 2), label=label)
 
         ax.axvline(LAM_MARK, color="grey", ls="--", lw=0.8, alpha=0.4,
                    zorder=1, label=r"$\lambda=%.1f$" % LAM_MARK)
@@ -164,13 +165,16 @@ def build_figure(df, surgery=False):
         for handle, label in zip(*ax.get_legend_handles_labels()):
             handles.setdefault(label, handle)
 
-    order = list(series) + [r"$\lambda=%.1f$" % LAM_MARK,
-                            r"baseline ($\lambda\!=\!0$)",
-                            r"$\xi_\mathrm{rms}=1$"]
+    # Column-major fill, so each objective sits above its PCGrad variant and
+    # the reference lines occupy the last two columns.
+    order = ["iiLoss", "iiLoss + PCGrad",
+             "HdLoss", "HdLoss + PCGrad",
+             r"baseline ($\lambda\!=\!0$)", r"$\lambda=%.1f$" % LAM_MARK,
+             r"$\xi_\mathrm{rms}=1$"]
     ordered = [(l, handles[l]) for l in order if l in handles]
     fig.legend([h for _, h in ordered], [l for l, _ in ordered],
-               loc="lower center", ncol=3, fontsize=_FS_LEG,
-               framealpha=0.9, bbox_to_anchor=(0.5, -0.12))
+               loc="lower center", ncol=4, fontsize=_FS_LEG,
+               framealpha=0.9, bbox_to_anchor=(0.5, -0.14))
 
     for ax, letter in zip(axes, ["a", "b", "c", "d"]):
         ax.text(-0.22, 1.05, letter, transform=ax.transAxes,
@@ -187,15 +191,13 @@ def main():
         REPO_ROOT, "results", "2026", "interference_summary_2026.csv"))
     parser.add_argument("--out", default=os.path.join(
         REPO_ROOT, "figures", "figure4.png"))
-    parser.add_argument("--surgery", action="store_true",
-                        help="add the PCGrad series (Supporting Information version)")
     args = parser.parse_args()
 
     df = pd.read_csv(args.csv)
     df.columns = df.columns.str.strip()
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    build_figure(df, surgery=args.surgery)
+    build_figure(df)
     plt.savefig(args.out, dpi=300, bbox_inches="tight")
     print(f"Saved >> {args.out}")
 
