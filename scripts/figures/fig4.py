@@ -38,7 +38,7 @@ plt.rcParams.update({
 
 _COL_II  = "#E61D60"
 _COL_HD  = "#1EACE4"
-_COL_REF = "#6B7280"
+_COL_REF = "#000000"
 
 # -- Series and panels ----------------------------------------------------
 # The matched lam=0 control shares the two-stage schedule of every regularised
