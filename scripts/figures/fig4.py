@@ -51,13 +51,15 @@ _ALPHA_PCGRAD = 0.45
 
 SERIES = {
     "iiLoss": dict(prefix="iiLoss_finetune_", color=_COL_II,
-                   marker="s", lw=1.8, ms=5, alpha=1.0),
+                   marker="s", lw=1.8, ms=5, alpha=1.0, fill=True),
     "iiLoss + PCGrad": dict(prefix="iiLoss_pcgrad_", color=_COL_II,
-                            marker="s", lw=1.0, ms=3.5, alpha=_ALPHA_PCGRAD),
+                            marker="s", lw=1.0, ms=4, alpha=_ALPHA_PCGRAD,
+                            fill=False),
     "HdLoss": dict(prefix="HdLoss_finetune_", color=_COL_HD,
-                   marker="o", lw=1.8, ms=5, alpha=1.0),
+                   marker="o", lw=1.8, ms=5, alpha=1.0, fill=True),
     "HdLoss + PCGrad": dict(prefix="HdLoss_pcgrad_", color=_COL_HD,
-                            marker="o", lw=1.0, ms=3.5, alpha=_ALPHA_PCGRAD),
+                            marker="o", lw=1.0, ms=4, alpha=_ALPHA_PCGRAD,
+                            fill=False),
 }
 
 METRICS = [
@@ -129,12 +131,18 @@ def build_figure(df):
             lam = [0.0]    + [p[0] for p in points]
             val = [base_m] + [p[1] for p in points]
             err = [base_s] + [p[2] for p in points]
+            # Filled markers without surgery, open with, so the pairing also
+            # survives greyscale reproduction.
+            filled = cfg["fill"]
             ax.errorbar(lam, val, yerr=err,
                         color=cfg["color"], ls="-", lw=cfg["lw"],
                         alpha=cfg["alpha"], marker=cfg["marker"],
-                        markersize=cfg["ms"], markeredgecolor="white",
-                        markeredgewidth=0.5, capsize=2, elinewidth=0.8,
-                        zorder=(3 if cfg["alpha"] == 1.0 else 2), label=label)
+                        markersize=cfg["ms"],
+                        markerfacecolor=(cfg["color"] if filled else "white"),
+                        markeredgecolor=("white" if filled else cfg["color"]),
+                        markeredgewidth=(0.5 if filled else 1.0),
+                        capsize=2, elinewidth=0.8,
+                        zorder=(3 if filled else 2), label=label)
 
         ax.axvline(LAM_MARK, color=_COL_REF, ls="--", lw=0.8, alpha=0.4,
                    zorder=1, label=r"$\lambda=%.1f$" % LAM_MARK)
