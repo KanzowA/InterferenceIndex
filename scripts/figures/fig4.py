@@ -21,10 +21,10 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 
-# -- Journal style (npj Computational Materials) --------------------------
+# -- Figure style ---------------------------------------------------------
 # Fonts are scaled so they print at 7 pt (body) and 6 pt (minor) once the
-# figure is reduced to a 170 mm double column.
-_COL_W    = 6.69          # 170 mm in inches
+# figure is reduced to the final column width.
+_COL_W    = 6.69          # target column width in inches
 _FIG_W    = 12.0          # rendering width for font scaling
 _FS       = round(7.0 * _FIG_W / _COL_W)   # body / axis labels
 _FS_SM    = round(6.0 * _FIG_W / _COL_W)   # minor annotations

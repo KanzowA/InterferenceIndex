@@ -1,6 +1,6 @@
 """Figure S1: convergence of the two loss terms during stage two.
 
-    (a) MSE term, relative to the stage-one reference
+    (a) MSE term, relative to the variance of the targets
     (b) xi^2 term, relative to the stage-one reference
 
 Curves are read from the per-run training_curve.csv files written by
@@ -10,6 +10,7 @@ Usage
 -----
     python scripts/figures/figS1.py
     python scripts/figures/figS1.py --lams 0.1 0.2 0.3 0.5
+    python scripts/figures/figS1.py --width 256
     python scripts/figures/figS1.py --prefix HdLoss_finetune_
 """
 
@@ -27,37 +28,41 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 
-# -- Journal style (npj Computational Materials) --------------------------
+# -- Figure style ---------------------------------------------------------
 # Fonts are scaled so they print at 7 pt (body) and 6 pt (minor) once the
-# figure is reduced to a 170 mm double column.
-_COL_W    = 6.69
-_FIG_W    = 12.0
-_FS       = round(7.0 * _FIG_W / _COL_W)
-_FS_SM    = round(6.0 * _FIG_W / _COL_W)
-_FS_LEG   = _FS
-_FS_PANEL = 20
+# figure is reduced to the final column width.
+_COL_W    = 6.69          # target column width in inches
+_FIG_W    = 12.0          # rendering width for font scaling
+_FS       = round(7.0 * _FIG_W / _COL_W)   # body / axis labels
+_FS_SM    = round(6.0 * _FIG_W / _COL_W)   # minor annotations
+_FS_CB    = _FS
+_FS_PANEL = 20            # panel labels a/b
 plt.rcParams.update({
     "font.family": "sans-serif",
     "font.size":   _FS,
     "axes.linewidth": 0.8,
 })
 
-# -- Panels ---------------------------------------------------------------
+_COL_II = "#E61D60"
+_COL_HD = "#1E46E4"
+_COL_MID = "#7A1FA2"
+
+# -- Series and panels ----------------------------------------------------
+# lam is mapped onto the two objective colours of fig4 through purple, so that
+# no value falls on a washed-out midpoint.
+_CMAP = LinearSegmentedColormap.from_list(
+    "lam", [_COL_HD, _COL_MID, _COL_II])
+
+DEFAULT_LAMS = ["0.1", "0.2", "0.3", "0.4", "0.5",
+                "0.6", "0.7", "0.8", "0.9"]
+DEFAULT_BASE_WIDTH = 1024
+
 METRICS = [
     ("mse_over_ref",
      r"$\mathrm{MSE}(\Delta_\mathrm{f}H)\,/\,\mathrm{Var}(\Delta_\mathrm{f}H)$"),
     ("penalty_over_ref",
      r"$\langle\xi^2\rangle\,/\,\langle\xi^2\rangle_0$"),
 ]
-
-DEFAULT_LAMS = ["0.1", "0.2", "0.3", "0.4", "0.5",
-                "0.6", "0.7", "0.8", "0.9"]
-DEFAULT_BASE_WIDTH = 1024
-
-# Interpolates between the two objective colours of Fig. 4 through purple, so
-# that no value of lam falls on a washed-out midpoint.
-_CMAP = LinearSegmentedColormap.from_list(
-    "lam", ["#1E46E4", "#7A1FA2", "#E61D60"])
 
 
 # -- Helpers --------------------------------------------------------------
@@ -103,11 +108,11 @@ def build_figure(curves):
                 fontsize=_FS_PANEL, fontweight="bold", va="bottom", ha="left",
                 clip_on=False)
 
-    # A colourbar rather than a legend, which would need one entry per lam.
+    # -- Shared colourbar, in place of one legend entry per lam ------------
     scalar_map = plt.cm.ScalarMappable(cmap=_CMAP, norm=norm)
     scalar_map.set_array([])
     cbar = fig.colorbar(scalar_map, ax=axes, fraction=0.04, pad=0.02)
-    cbar.set_label(r"$\lambda$", fontsize=_FS)
+    cbar.set_label(r"$\lambda$", fontsize=_FS_CB)
     cbar.set_ticks(values)
     cbar.ax.tick_params(labelsize=_FS_SM)
 
