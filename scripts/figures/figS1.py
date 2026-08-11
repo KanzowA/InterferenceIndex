@@ -22,6 +22,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import pandas as pd
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -49,9 +50,14 @@ METRICS = [
      r"$\langle\xi^2\rangle\,/\,\langle\xi^2\rangle_0$"),
 ]
 
-DEFAULT_LAMS = ["0.1", "0.2", "0.3", "0.5"]
+DEFAULT_LAMS = ["0.1", "0.2", "0.3", "0.4", "0.5",
+                "0.6", "0.7", "0.8", "0.9", "1.0"]
 DEFAULT_BASE_WIDTH = 1024
-_CMAP = "viridis"
+
+# Interpolates between the two objective colours of Fig. 4 through purple, so
+# that no value of lam falls on a washed-out midpoint.
+_CMAP = LinearSegmentedColormap.from_list(
+    "lam", ["#1E46E4", "#7A1FA2", "#E61D60"])
 
 
 # -- Helpers --------------------------------------------------------------
@@ -77,13 +83,13 @@ def load_curve(year, target, prefix, lam, width):
 # -- Figure ---------------------------------------------------------------
 def build_figure(curves):
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.2))
-    cmap = plt.get_cmap(_CMAP)
-    n = max(len(curves), 2)
+    values = [float(lam) for lam, _ in curves]
+    norm = Normalize(vmin=min(values), vmax=max(values))
 
     for ax_idx, (ax, (col, ylabel)) in enumerate(zip(axes, METRICS)):
-        for i, (lam, df) in enumerate(curves):
+        for lam, df in curves:
             ax.plot(df["epoch"], df[col], lw=1.6,
-                    color=cmap(i / (n - 1)), label=rf"$\lambda={lam}$")
+                    color=_CMAP(norm(float(lam))))
 
         ax.set_xlabel("epoch", fontsize=_FS)
         ax.set_ylabel(ylabel, fontsize=_FS)
@@ -97,11 +103,14 @@ def build_figure(curves):
                 fontsize=_FS_PANEL, fontweight="bold", va="bottom", ha="left",
                 clip_on=False)
 
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=len(labels),
-               fontsize=_FS_LEG, framealpha=0.9, bbox_to_anchor=(0.5, -0.08))
+    # A colourbar rather than a legend, which would need one entry per lam.
+    scalar_map = plt.cm.ScalarMappable(cmap=_CMAP, norm=norm)
+    scalar_map.set_array([])
+    cbar = fig.colorbar(scalar_map, ax=axes, fraction=0.04, pad=0.02)
+    cbar.set_label(r"$\lambda$", fontsize=_FS)
+    cbar.set_ticks(values)
+    cbar.ax.tick_params(labelsize=_FS_SM)
 
-    fig.tight_layout()
     return fig
 
 
