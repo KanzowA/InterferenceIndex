@@ -50,20 +50,22 @@ METRICS = [
 ]
 
 DEFAULT_LAMS = ["0.1", "0.2", "0.3", "0.5"]
+DEFAULT_BASE_WIDTH = 1024
 _CMAP = "viridis"
 
 
 # -- Helpers --------------------------------------------------------------
-def _curve_paths(year, target, prefix, lam):
-    """All per-seed training_curve.csv files for one lam."""
+def _curve_paths(year, target, prefix, lam, width):
+    """All per-seed training_curve.csv files for one lam and base width."""
+    suffix = "" if width == DEFAULT_BASE_WIDTH else f"_w{width}"
     pattern = os.path.join(REPO_ROOT, "data", year, "ml", target,
-                           f"{prefix}{lam}_s*", "training_curve.csv")
+                           f"{prefix}{lam}{suffix}_s*", "training_curve.csv")
     return sorted(glob.glob(pattern))
 
 
-def load_curve(year, target, prefix, lam):
+def load_curve(year, target, prefix, lam, width):
     """Mean over folds and seeds at each epoch, or None if nothing is found."""
-    paths = _curve_paths(year, target, prefix, lam)
+    paths = _curve_paths(year, target, prefix, lam, width)
     if not paths:
         return None
     frames = [pd.read_csv(p) for p in paths]
@@ -109,15 +111,18 @@ def main():
     parser.add_argument("--target", default="Hf")
     parser.add_argument("--prefix", default="iiLoss_finetune_")
     parser.add_argument("--lams", nargs="+", default=DEFAULT_LAMS)
+    parser.add_argument("--width", type=int, default=DEFAULT_BASE_WIDTH,
+                        help="base width of the runs to plot")
     parser.add_argument("--out", default=os.path.join(
         REPO_ROOT, "figures", "figureS1.png"))
     args = parser.parse_args()
 
     curves = []
     for lam in args.lams:
-        df = load_curve(args.year, args.target, args.prefix, lam)
+        df = load_curve(args.year, args.target, args.prefix, lam, args.width)
         if df is None:
-            print(f"  no training_curve.csv for {args.prefix}{lam}, skipping")
+            print(f"  no training_curve.csv for {args.prefix}{lam} "
+                  f"at width {args.width}, skipping")
             continue
         curves.append((lam, df))
     if not curves:
