@@ -45,13 +45,13 @@ plt.rcParams.update({
 # -- Panels ---------------------------------------------------------------
 METRICS = [
     ("mse_over_ref",
-     r"$\mathrm{MSE}(\Delta_\mathrm{f}H)\,/\,\mathrm{MSE}_0(\Delta_\mathrm{f}H)$"),
+     r"$\mathrm{MSE}(\Delta_\mathrm{f}H)\,/\,\mathrm{Var}(\Delta_\mathrm{f}H)$"),
     ("penalty_over_ref",
      r"$\langle\xi^2\rangle\,/\,\langle\xi^2\rangle_0$"),
 ]
 
 DEFAULT_LAMS = ["0.1", "0.2", "0.3", "0.4", "0.5",
-                "0.6", "0.7", "0.8", "0.9", "1.0"]
+                "0.6", "0.7", "0.8", "0.9"]
 DEFAULT_BASE_WIDTH = 1024
 
 # Interpolates between the two objective colours of Fig. 4 through purple, so
