@@ -57,12 +57,21 @@ DEFAULT_LAMS = ["0.1", "0.2", "0.3", "0.4", "0.5",
                 "0.6", "0.7", "0.8", "0.9"]
 DEFAULT_BASE_WIDTH = 1024
 
-METRICS = [
-    ("mse_over_ref",
-     r"$\mathrm{MSE}(\Delta_\mathrm{f}H)\,/\,\mathrm{Var}(\Delta_\mathrm{f}H)$"),
-    ("penalty_over_ref",
-     r"$\langle\xi^2\rangle\,/\,\langle\xi^2\rangle_0$"),
-]
+_MSE_LABEL = (r"$\mathrm{MSE}(\Delta_\mathrm{f}H)\,/\,"
+              r"\mathrm{Var}(\Delta_\mathrm{f}H)$")
+
+# The second panel plots whichever penalty the objective carries.
+PENALTY_LABELS = {
+    "iiLoss": r"$\langle\xi^2\rangle\,/\,\langle\xi^2\rangle_0$",
+    "HdLoss": (r"$\mathrm{MSE}(\Delta_\mathrm{d}H)\,/\,"
+               r"\mathrm{MSE}_0(\Delta_\mathrm{d}H)$"),
+}
+
+
+def _metrics(prefix):
+    key = "HdLoss" if prefix.startswith("HdLoss") else "iiLoss"
+    return [("mse_over_ref", _MSE_LABEL),
+            ("penalty_over_ref", PENALTY_LABELS[key])]
 
 
 # -- Helpers --------------------------------------------------------------
@@ -86,12 +95,13 @@ def load_curve(year, target, prefix, lam, width):
 
 
 # -- Figure ---------------------------------------------------------------
-def build_figure(curves):
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.2))
+def build_figure(curves, prefix="iiLoss_finetune_"):
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.2),
+                             gridspec_kw=dict(wspace=0.28))
     values = [float(lam) for lam, _ in curves]
     norm = Normalize(vmin=min(values), vmax=max(values))
 
-    for ax_idx, (ax, (col, ylabel)) in enumerate(zip(axes, METRICS)):
+    for ax_idx, (ax, (col, ylabel)) in enumerate(zip(axes, _metrics(prefix))):
         for lam, df in curves:
             ax.plot(df["epoch"], df[col], lw=1.6,
                     color=_CMAP(norm(float(lam))))
@@ -143,7 +153,7 @@ def main():
         raise SystemExit("No training curves found")
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    build_figure(curves)
+    build_figure(curves, args.prefix)
     plt.savefig(args.out, dpi=300, bbox_inches="tight")
     print(f"Saved >> {args.out}")
 
