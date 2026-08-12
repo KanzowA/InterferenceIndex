@@ -28,3 +28,5 @@
 *.pth   binary
 *.h5    binary
 *.hdf5  binary
+*.csv -text
+*.csv -text

@@ -30,4 +30,5 @@ tmp*.json
 # Checks
 scripts/test.py
 
-results_section_draft.md
+results_section_draft.mdsi_tables.tex
+si_tables.tex
