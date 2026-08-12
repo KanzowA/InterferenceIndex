@@ -27,6 +27,8 @@ REPO_ROOT = os.path.dirname(HERE)
 KINDS = [
     (re.compile(r"^iiLoss_save_0\.0(_w\d+)?$"),
      "stage 1 checkpoint source"),
+    (re.compile(r"^(ii|Hd)Loss_0\.0(_w\d+)?$"),
+     "stage 1 baseline, not fine-tuned"),
     (re.compile(r"^(ii|Hd)Loss_finetune_\d+(\.\d+)?$"),
      "main sweep"),
     (re.compile(r"^(ii|Hd)Loss_pcgradc?_\d+(\.\d+)?$"),
