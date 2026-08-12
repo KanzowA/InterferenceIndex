@@ -13,6 +13,7 @@ Usage
 """
 
 import argparse
+import json
 import os
 import sys
 
@@ -86,9 +87,20 @@ def main():
     )
 
     print(f"{args.model} lam={args.lam}, {args.epochs} epochs, constant lr 1e-4")
-    PROBLEM_DICTIONARY[args.problem](model, args.target)
+    predictions = PROBLEM_DICTIONARY[args.problem](model, args.target)
 
-    print(f"\nWrote {history}")
+    # Held-out predictions, so the longer budget can be scored on the same
+    # footing as the reported runs. The name does not parse as a lam value,
+    # so the figure and table scripts ignore it.
+    year = "2026" if "2026" in args.problem else "2020"
+    run = f"{args.model}_finetune_conv{args.epochs}_{args.lam}_s{args.seed}"
+    pred_dir = os.path.join(REPO_ROOT, "data", year, "ml", args.target, run)
+    os.makedirs(pred_dir, exist_ok=True)
+    with open(os.path.join(pred_dir, "ml_input.json"), "w") as handle:
+        json.dump(predictions, handle)
+    print(f"\nWrote {os.path.join(pred_dir, 'ml_input.json')}")
+
+    print(f"Wrote {history}")
     report(history)
 
 
