@@ -6,7 +6,6 @@
 *.md    text eol=lf
 *.rst   text eol=lf
 *.txt   text eol=lf
-*.csv   text eol=lf
 *.tsv   text eol=lf
 *.json  text eol=lf
 *.yaml  text eol=lf
@@ -28,5 +27,7 @@
 *.pth   binary
 *.h5    binary
 *.hdf5  binary
-*.csv -text
-*.csv -text
+
+# CSVs are written by Python's csv module, which emits CRLF. Storing them
+# verbatim avoids a permanent diff between the writer and the checkout.
+*.csv   -text
