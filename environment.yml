@@ -6,11 +6,9 @@ channels:
 dependencies:
   - python=3.12
   - numpy
-  - scipy
   - scikit-learn
   - pandas
   - matplotlib
-  - prettytable
   - pip
   - pip:
       # Supplements PyPI rather than replacing it, so the packages below
