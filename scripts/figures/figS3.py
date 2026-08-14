@@ -54,7 +54,7 @@ _COL_REF = "#000000"
 _CMAP = LinearSegmentedColormap.from_list(
     "width", [_COL_HD, _COL_MID, _COL_II])
 
-DEFAULT_WIDTHS = [32, 64, 128, 256, 1024]
+DEFAULT_WIDTHS = [32, 64, 128, 256, 512, 1024]
 DEFAULT_BASE_WIDTH = 1024
 LAM_MAX = 0.5
 

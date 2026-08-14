@@ -2,11 +2,11 @@
 
 This repository accompanies the manuscript:
 
-> **[Title]**
-> [Authors], *Journal* (year)
+> **The Interference Index: Quantifying and Improving Error Cancellation in Machine-Learned Thermodynamic Stability Predictions**
+> Alexander Kanzow, Cesare Boriosi, Carlos R. Jacinto-Mejía, Loriano Storchi and Giovanni Bistoni, *Journal* (2026)
 > [DOI]
 
-It extends the benchmark framework of [Bartel et al. (2020)](https://www.nature.com/articles/s41524-020-00362-y) by introducing the **interference index ξ** — a scale-invariant metric that quantifies how machine-learned formation energy errors propagate in decomposition reactions — and two training objectives that directly minimise it.
+It extends the benchmark framework of [Bartel et al. (2020)](https://www.nature.com/articles/s41524-020-00362-y) by introducing the *interference index ξ*, a scale-invariant metric that quantifies how errors in machine-learned predictions propagate in derived quantities. It also features a model which minimises *ξ* through regularised training and compares the results to direct decomposition enthalpy training.
 
 ---
 

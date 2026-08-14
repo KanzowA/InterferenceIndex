@@ -195,7 +195,7 @@ def main():
     parser.add_argument("--surgery-lams", nargs="+",
                         default=["0.1", "0.2", "0.3", "0.4", "0.5"])
     parser.add_argument("--widths", nargs="+", type=int,
-                        default=[32, 64, 128, 256, 1024])
+                        default=[32, 64, 128, 256, 512, 1024])
     args = parser.parse_args()
 
     groups = load(args.dataset)

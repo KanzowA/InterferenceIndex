@@ -22,6 +22,7 @@ results/2026/interference_scores_2026.csv
 
 # Misc
 ZENODO_UPLOAD.md
+README_deposit.md
 ml_predictions_2026.zip
 interference_circles.png
 score_vs_error.png
