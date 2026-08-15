@@ -5,17 +5,17 @@ channels:
 
 dependencies:
   - python=3.12
-  - numpy
-  - scikit-learn
-  - pandas
-  - matplotlib
+  - numpy=2.5.1
+  - scikit-learn=1.9.0
+  - matplotlib=3.11.1
   - pip
   - pip:
       # Supplements PyPI rather than replacing it, so the packages below
       # still resolve normally. cu130 matches driver 590 / CUDA 13.1;
       # use cu126 for older drivers, or drop the line for CPU-only.
       - --extra-index-url https://download.pytorch.org/whl/cu130
-      - torch
-      - pymatgen
-      - matminer
-      - mp-api
+      - torch==2.13.0
+      - pandas==2.3.3
+      - pymatgen==2026.5.4
+      - matminer==0.10.1
+      - mp-api==0.46.4
