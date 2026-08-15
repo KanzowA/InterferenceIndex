@@ -484,6 +484,11 @@ class iiLossNN(nn.Module):
         with torch.no_grad():
             pred0  = self._net(X_t)
             delta0 = pred0 - Y_t
+            # In stage two the model starts from the stage-one checkpoint, so
+            # its MSE is already far below the target variance and this clamp
+            # always binds. The reference is therefore var_y, not the current
+            # MSE. That is deliberate: a reference that shrank with the model
+            # would make the accuracy term grow without bound as it improved.
             mse_ref = (delta0 ** 2).mean().clamp(min=var_y)
 
             if has_rxn:
