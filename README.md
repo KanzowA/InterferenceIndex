@@ -145,8 +145,11 @@ python scripts/generate_figures.py --si       # supporting figures only
 ## Retraining
 
 Training is deterministic given the seed, so the published predictions are
-reproducible from the stage-one checkpoints. The full sweep covers both
-objectives, lambda from 0 to 1, gradient surgery, and the capacity ladder.
+reproducible from the stage-one checkpoints.
+
+`sweep.sh` runs stage one, the matched lambda = 0 control, and lambda from 0.1
+to 1.0 crossed with the four two-stage variants. That is the main sweep behind
+Table 2 and Figure 4.
 
 ```bash
 bash scripts/sweep.sh              # target Hf, seed 0
@@ -162,6 +165,42 @@ python scripts/train_models.py allMP_2026 Hf HdLoss_pcgrad_0.3 1 256
 
 Run names follow `<objective>_<variant>_<lambda>_s<seed>`. Base width 1024 is
 the default and carries no suffix.
+
+### Runs outside the sweep
+
+The Supporting Information also needs the capacity ladder, the denominator
+stabiliser check and the conditional surgery comparison. `sweep.sh` does not
+cover these, so without them the corresponding SI tables come out empty.
+
+```bash
+# Capacity ladder, Table S5 and Figure S3
+for w in 32 64 128 256 512; do
+  for s in 0 1 2; do
+    python scripts/train_models.py allMP_2026 Hf iiLoss_save_0.0 $s $w
+    for lam in 0.0 0.1 0.2 0.3 0.4 0.5; do
+      python scripts/train_models.py allMP_2026 Hf iiLoss_finetune_$lam $s $w
+    done
+  done
+done
+
+# Denominator stabiliser, Table S3
+for e in 1e-3 1e-6; do
+  for s in 0 1 2; do
+    python scripts/train_models.py allMP_2026 Hf iiLoss_finetune_eps${e}_0.2 $s
+  done
+done
+
+# Conditional gradient surgery, Table S4
+for lam in 0.1 0.2 0.3 0.4 0.5; do
+  for s in 0 1 2; do
+    python scripts/train_models.py allMP_2026 Hf iiLoss_pcgradc_$lam $s
+  done
+done
+
+# Convergence diagnostic, Section 3 of the SI
+python scripts/check_convergence.py --model iiLoss --lam 0.2
+python scripts/check_convergence.py --model HdLoss --lam 0.1
+```
 
 ---
 
