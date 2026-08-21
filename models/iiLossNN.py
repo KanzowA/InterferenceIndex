@@ -28,7 +28,7 @@ def _num_atoms(formula: str) -> int:
 
 
 def _is_element(formula: str) -> bool:
-    """True iff the formula contains only one distinct element symbol."""
+    """True if the formula contains only one distinct element symbol."""
     symbols = re.findall(r"[A-Z][a-z]?", formula)
     return len(set(symbols)) == 1
 
@@ -186,7 +186,6 @@ class iiLossNN(nn.Module):
 
     def preprocess(self, X):
         """Featurise with ElementFraction.
-
         Column 0 of the returned features is the row index, so that the KFold
         slicing in process.py carries the label mapping through unchanged.
         """
@@ -220,7 +219,6 @@ class iiLossNN(nn.Module):
         fold_idx = self._fold_counter
         self._fold_counter += 1
 
-        # Must precede network construction, which consumes the RNG.
         self._seed_fold(fold_idx)
 
         train_indices = X[:, 0].astype(int)
