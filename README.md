@@ -14,7 +14,7 @@ are combined into a reaction enthalpy. This repository provides the metric, two
 training objectives that act on it, and everything needed to reproduce the
 figures and tables of the paper.
 
-It extends the benchmark framework of
+It extends the benchmark study by
 [Bartel et al. (2020)](https://www.nature.com/articles/s41524-020-00362-y),
 whose seven models and 2020 Materials Project snapshot are included here for
 comparison.
