@@ -5,7 +5,7 @@ This repository accompanies the manuscript
 > **The Interference Index: Quantifying and Improving Error Cancellation in
 > Machine-Learned Thermodynamic Stability Predictions**
 > Alexander Kanzow, Cesare Boriosi, Carlos R. Jacinto-Mejía, Loriano Storchi
-> and Giovanni Bistoni, *Journal* (2026), [DOI]
+> and Giovanni Bistoni, *ChemRxiv* (2026), DOI: 10.26434/chemrxiv.15008797/v1
 
 Machine-learned formation enthalpies approach DFT accuracy while remaining
 unreliable for the stability predictions derived from them. The interference
@@ -22,9 +22,7 @@ comparison.
 If you use this code, please cite
 
 ```
-Kanzow, A., Boriosi, C., Jacinto-Mejia, C. R., Storchi, L., Bistoni, G.,
-The Interference Index: Quantifying and Improving Error Cancellation in
-Machine-Learned Thermodynamic Stability Predictions, Journal (2026)
+A. Kanzow, C. Boriosi, C. R. Jacinto-Mejía, L. Storchi, G. Bistoni, The Interference Index: Quantifying and Improving Error Cancellation in Machine-Learned Thermodynamic Stability Predictions, ChemRxiv, 2026.
 ```
 
 ---
