@@ -30,6 +30,15 @@ and for the prospective runs (one model per seed, trained on all of MP)
     iiperpfrozen_0.2                iiLoss_finetune_0.2
     iiloss_0.2                      iiLossRaw_finetune_0.2
     hdloss_0.1                      HdLoss_finetune_0.1
+
+The training curves and stage-one checkpoints of these runs are not imported by
+this script; they reach the repository's layout through the Zenodo archives,
+packed with the same names:
+
+    runs_wbm/curves/<run>_s<seed>.csv   data/wbm/ml/curves/<name above>_s<seed>.csv
+    runs_nested/ckpt/                   checkpoints/nested/
+    runs_capacity/w<width>/ckpt/        checkpoints/nested_w<width>/
+    runs_wbm/ckpt/                      checkpoints/prospective/
 """
 
 import argparse
