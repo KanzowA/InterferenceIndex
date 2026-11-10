@@ -1,7 +1,13 @@
 """Dataset splits and the model registry used by train_models.py.
 
 Problems are cross-validation protocols over an MP snapshot; models are named
-by their configuration, e.g. "iiLoss_pcgrad_0.3", and constructed on lookup.
+by their configuration, e.g. "iiLoss_finetune_0.2", and constructed on lookup.
+
+iiLoss_* is the gauge-fixed objective with frozen normalisation. The objective
+of the first preprint is iiLossRaw_*: every iiLoss_* name exists with Raw
+inserted, e.g. "iiLossRaw_finetune_0.2", and builds the same model with
+project=False, freeze_den=False. The predictions in data/2026/ml/ predate the
+revision, so the iiLoss_* runs stored there are iiLossRaw_* runs.
 """
 
 import json
@@ -32,8 +38,17 @@ DEFAULT_BASE_WIDTH = 1024
 def hidden_from_base(base, n_layers=4):
     return tuple(base >> k for k in range(n_layers))
 
+# The two switches that separate the revision's objective from the preprint's.
+_RAW = dict(project=False, freeze_den=False)
+
+
 class _ModelDict(dict):
     def __missing__(self, key):
+        # The preprint's objective: the same names with Raw, both fixes off.
+        if key.startswith("iiLossRaw_"):
+            build = self[key.replace("iiLossRaw_", "iiLoss_", 1)]
+            return lambda target, seed=0, hidden=None, b=build: _with(
+                b(target, seed, hidden), **_RAW)
         # Stage 1: train with lam and save a checkpoint.
         if key.startswith("iiLoss_save_"):
             try:
@@ -163,9 +178,17 @@ class _ModelDict(dict):
                                      "iiLoss_finetune_<lam>", "iiLoss_pcgrad_<lam>",
                                      "iiLoss_pcgradc_<lam>",
                                      "iiLoss_finetune_eps<eps>_<lam>",
+                                     "iiLossRaw_<any of the above>",
                                      "HdLoss_<alpha>", "HdLoss_finetune_<alpha>",
                                      "HdLoss_pcgrad_<alpha>"]
         raise KeyError(f"Unknown model '{key}'. Available: {known}")
+
+def _with(model, **switches):
+    """Set constructor switches on an already built model, before fit()."""
+    for key, value in switches.items():
+        setattr(model, key, value)
+    return model
+
 
 MODEL_DICTIONARY = _ModelDict({})
 
@@ -292,7 +315,50 @@ def allMP_2026_single(model, target, test_size=0.2, random_state=10):
     return {labels[test_idx[i]]: preds[i] for i in range(len(test_idx))}
 
 
+def allMP_2025(model, target):
+    """Five-fold cross-validation on the MP GGA/GGA+U hull of the revision.
+
+    data/2025/hullout_2025.json is built by build_hull.py from Matbench
+    Discovery's MP energies (2025-02-01), the energy convention of the WBM test
+    set, and its reactions reproduce its own stored dH_d exactly. The folds are
+    those of allMP_2020 and allMP_2026.
+    """
+    input_file = os.path.join(REPO_ROOT, "data", "2025", "hullout_2025.json")
+
+    print(f"Reading 2025 MP data from {input_file}")
+
+    with open(input_file, "r") as f:
+        input_data = json.load(f)
+
+    print("Preprocessing data")
+    features, targets, labels = model.preprocess(input_data)
+
+    predictions = dict()
+
+    kf = KFold(n_splits=5, shuffle=True, random_state=10)
+
+    iFold = 0
+    for train_indices, test_indices in kf.split(features):
+        print(f"Training on fold {iFold}")
+        iFold += 1
+
+        features_train = features[train_indices]
+        targets_train  = targets[train_indices]
+        features_test  = features[test_indices]
+        labels_test    = labels[test_indices]
+
+        predictions_this_fold = model.fit_and_predict(
+            Xtrain=features_train, Ytrain=targets_train, Xtest=features_test)
+
+        predictions = {**predictions,
+                       **{labels_test[i]: predictions_this_fold[i]
+                          for i in range(len(test_indices))}}
+
+    return predictions
+
+
 PROBLEM_DICTIONARY = {"allMP_2020":           allMP_2020,
                       "allMP_2020_single":    allMP_2020_single,
                       "allMP_2026":           allMP_2026,
-                      "allMP_2026_single":    allMP_2026_single}
+                      "allMP_2026_single":    allMP_2026_single,
+                      "allMP_2025":           allMP_2025}

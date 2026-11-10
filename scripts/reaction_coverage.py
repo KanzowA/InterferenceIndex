@@ -11,6 +11,7 @@ Usage
 -----
     python scripts/reaction_coverage.py
     python scripts/reaction_coverage.py --dataset 2020
+    python scripts/reaction_coverage.py --dataset 2025
 """
 
 import argparse
@@ -67,7 +68,7 @@ def coverage(data, labels, train_indices):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", default="2026", choices=["2020", "2026"])
+    parser.add_argument("--dataset", default="2026", choices=["2020", "2025", "2026"])
     args = parser.parse_args()
 
     path = os.path.join(REPO_ROOT, "data", args.dataset,
@@ -97,6 +98,11 @@ def main():
     print(f"  mean products kept:        {100 * mean(all_fracs):.1f}%")
     print(f"  reactions with all products kept: "
           f"{100 * sum(f == 1.0 for f in all_fracs) / len(all_fracs):.1f}%")
+    # The mean above includes the complete reactions at 1; over the
+    # incomplete ones alone it is much lower, which is easy to misquote.
+    partial = [f for f in all_fracs if f < 1.0]
+    print(f"  mean products kept, incomplete reactions only: "
+          f"{100 * mean(partial):.1f}%")
 
 
 if __name__ == "__main__":

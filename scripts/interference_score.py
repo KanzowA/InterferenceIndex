@@ -4,6 +4,7 @@ Usage
 -----
     python scripts/interference_score.py 2020
     python scripts/interference_score.py 2026
+    python scripts/interference_score.py 2025 --summary-only
 
 Output, written to results/<year>/
     interference_scores_<year>.csv    per-compound scores for every model
@@ -26,6 +27,7 @@ HULLOUT_MAP = {
     "2020": os.path.join(DATA_ROOT, "2020", "hullout_2020.json"),
     "2026": os.path.join(DATA_ROOT, "2026", "hullout_2026.json"),
     "2026_single": os.path.join(DATA_ROOT, "2026", "hullout_2026.json"),
+    "2025": os.path.join(DATA_ROOT, "2025", "hullout_2025.json"),
 }
 
 MODELS_BASE = ["ElFrac", "Meredig", "Magpie", "AutoMat", "ElemNet",
@@ -193,13 +195,14 @@ def main():
     parser.add_argument("split", nargs="?", default="2020",
                         help="Data split to evaluate (default: 2020).")
     parser.add_argument("--hullout", default=None)
+    parser.add_argument("--summary-only", action="store_true",
+                        help="skip the per-compound file; the 2025 runs alone "
+                             "would make it several GB")
     args = parser.parse_args()
     split = args.split
 
-    if split.startswith("2020"):
-        ML_DIR = os.path.join(DATA_ROOT, "2020", "ml", "Hf")
-    elif split.startswith("2026"):
-        ML_DIR = os.path.join(DATA_ROOT, "2026", "ml", "Hf")
+    if split[:4] in ("2020", "2025", "2026"):
+        ML_DIR = os.path.join(DATA_ROOT, split[:4], "ml", "Hf")
     else:
         raise ValueError(f"Unknown split: {split}")
     print(f"Using split: {split}  ->  {ML_DIR}\n")
@@ -215,6 +218,8 @@ def main():
         Runs are named <family>_<lam> with optional _w<width> and _s<seed>
         suffixes, so "iiLoss_pcgrad_0.3", "iiLoss_pcgrad_0.3_s2" and
         "iiLoss_save_0.0_w256_s1" are all accepted. Absent suffixes report -1.
+        A nested run, lam chosen per fold ("iiLoss_nested_s2"), sorts after
+        every fixed lam of its family.
         Raises ValueError if the lam field is not numeric.
         """
         stem, seed, width = name, -1, -1
@@ -225,6 +230,8 @@ def main():
         if tail.startswith("w") and tail[1:].isdigit():
             stem, width = head, int(tail[1:])
         family, _, lam = stem.rpartition("_")
+        if lam == "nested":
+            return stem, float("inf"), width, seed
         return family, float(lam), width, seed
 
     def _detect_variants(prefix, ml_dir):
@@ -240,7 +247,8 @@ def main():
         variants.sort(key=_split_variant)
         return variants
 
-    ii_variants = _detect_variants("iiLoss_", ML_DIR)
+    ii_variants = (_detect_variants("iiLoss_", ML_DIR)
+                   + _detect_variants("iiLossRaw_", ML_DIR))
     ed_variants = _detect_variants("HdLoss_", ML_DIR)
 
     MODELS = list(MODELS_BASE) + ii_variants + ed_variants
@@ -335,22 +343,23 @@ def main():
 
             n_ok += 1
             scores.append(xi_err)
-            results.append({
-                "model":     model,
-                "compound":  compound,
-                "stability": entry["stability"],
-                "Hf_DFT":    entry["Hf"],
-                "Hd_DFT":    entry["Hd"],
-                "Hd_err":    round(hd_err, 6),
-                "xi_err":    round(xi_err, 6),
-                "eta_err":   round(eta_err, 6),
-                "phi_err": round(math.degrees(phi_err), 4),
-                "xi_ml":     round(xi_ml, 6),
-                "eta_ml":    round(eta_ml, 6),
-                "phi_ml":  round(math.degrees(phi_ml), 4),
-                "N":         N,
-                "sqrt_N":    round(sqrt_N, 4),
-            })
+            if not args.summary_only:   # rows are held only to be written out
+                results.append({
+                    "model":     model,
+                    "compound":  compound,
+                    "stability": entry["stability"],
+                    "Hf_DFT":    entry["Hf"],
+                    "Hd_DFT":    entry["Hd"],
+                    "Hd_err":    round(hd_err, 6),
+                    "xi_err":    round(xi_err, 6),
+                    "eta_err":   round(eta_err, 6),
+                    "phi_err": round(math.degrees(phi_err), 4),
+                    "xi_ml":     round(xi_ml, 6),
+                    "eta_ml":    round(eta_ml, 6),
+                    "phi_ml":  round(math.degrees(phi_ml), 4),
+                    "N":         N,
+                    "sqrt_N":    round(sqrt_N, 4),
+                })
 
         hd_mae  = sum(abs(e) for e in hd_errors) / len(hd_errors) if hd_errors else float("nan")
         hd_rmse = math.sqrt(sum(e**2 for e in hd_errors) / len(hd_errors)) if hd_errors else float("nan")
@@ -371,19 +380,20 @@ def main():
                           "f1": f1, "precision": prec, "recall": rec,
                           "tp": tp, "fp": fp, "fn": fn, "tn": tn}
 
-    year = "2020" if split.startswith("2020") else "2026"
+    year = split[:4]
     out_dir = os.path.join(REPO_ROOT, "results", year)
     os.makedirs(out_dir, exist_ok=True)
-    out_csv = os.path.join(out_dir, f"interference_scores_{year}.csv")
-    fieldnames = ["model", "compound", "stability", "Hf_DFT", "Hd_DFT", "Hd_err",
-                  "xi_err",   "eta_err", "phi_err",
-                  "xi_ml",    "eta_ml",  "phi_ml",
-                  "N", "sqrt_N"]
-    with open(out_csv, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        w.writerows(results)
-    print(f"\nPer-compound scores written to  {out_csv}")
+    if not args.summary_only:
+        out_csv = os.path.join(out_dir, f"interference_scores_{year}.csv")
+        fieldnames = ["model", "compound", "stability", "Hf_DFT", "Hd_DFT", "Hd_err",
+                      "xi_err",   "eta_err", "phi_err",
+                      "xi_ml",    "eta_ml",  "phi_ml",
+                      "N", "sqrt_N"]
+        with open(out_csv, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fieldnames)
+            w.writeheader()
+            w.writerows(results)
+        print(f"\nPer-compound scores written to  {out_csv}")
 
     sum_csv = os.path.join(out_dir, f"interference_summary_{year}.csv")
     with open(sum_csv, "w", newline="") as f:

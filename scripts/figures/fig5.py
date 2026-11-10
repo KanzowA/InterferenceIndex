@@ -1,12 +1,18 @@
 """Figure 5: xi distribution before and after interference-aware training.
 
-    (a) matched baseline (lam = 0)
-    (b) iiLoss at the operating point (lam = 0.2)
+    (a) matched control (lam = 0)
+    (b) the preprint's objective, iiLossRaw at lam = 0.2
+    (c) iiLoss, lam chosen on the validation split
 
 Layout follows fig1.py; only the data source differs, so the trained model can
 be read directly against the reference distributions shown there. Rows are
 pooled over seeds: every run whose name is the given stem, with or without an
 _s<seed> suffix, contributes to the same panel.
+
+The xi values come either from a per-compound scores file written by
+interference_score.py (--csv), or, by default, straight from the predictions in
+data/<year>/ml/Hf/ (--year), computed with spectral.py; the 2025 scores file
+would be several GB. Both give the same xi, N and reaction set.
 
 Arcs and scatter are drawn for N <= 10 to keep the fig1 frame, while
 xi_rms and the reported fraction are computed over all reactions, so they match
@@ -15,7 +21,10 @@ the summary table.
 
 import argparse
 import csv
+import glob
+import json
 import os
+import sys
 from collections import defaultdict
 
 import matplotlib
@@ -27,6 +36,7 @@ from matplotlib.colors import TwoSlopeNorm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, os.path.dirname(HERE))
 
 COL_REF = "#6B7280"
 N_VALS  = [2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -53,8 +63,9 @@ FULL_H        = CIRC_TOP + HIST_H
 
 ARC_PHI = np.linspace(0, np.pi / 2, 300)
 
-DEFAULT_STEMS  = ["iiLoss_finetune_0.0", "iiLoss_finetune_0.2"]
-DEFAULT_LABELS = [r"baseline ($\lambda=0$)", r"iiLoss ($\lambda=0.2$)"]
+DEFAULT_STEMS  = ["iiLoss_finetune_0.0", "iiLossRaw_finetune_0.2", "iiLoss_nested"]
+DEFAULT_LABELS = [r"control ($\lambda=0$)", r"iiLossRaw, preprint ($\lambda=0.2$)",
+                  r"iiLoss ($\lambda$ from validation)"]
 
 
 def _stem_of(name):
@@ -84,6 +95,33 @@ def load_distributions(csv_path, stems):
             continue
         data[s] = {"per_N": {N: np.array(v) for N, v in per_stem[s].items()},
                    "all":   np.array(every[s])}
+    return data
+
+
+def load_from_predictions(year, stems):
+    """The same distributions, computed from data/<year>/ml/Hf/<stem>_s*/."""
+    from spectral import HULLOUT_MAP, free_sizes, load_hull, reaction_sums, residual
+    H = load_hull(HULLOUT_MAP[year])
+    nfree = free_sizes(H)
+    data = {}
+    for stem in stems:
+        per_N, every = defaultdict(list), []
+        paths = sorted(glob.glob(os.path.join(REPO_ROOT, "data", year, "ml", "Hf",
+                                              f"{stem}_s*", "ml_input.json")))
+        for path in paths:
+            if _stem_of(os.path.basename(os.path.dirname(path))) != stem:
+                continue
+            with open(path) as f:
+                d, _ = residual(H, json.load(f))
+            y, q = reaction_sums(H, d)
+            m = (nfree >= 2) & (q > 0)
+            xi = np.abs(y[m]) / np.sqrt(q[m])
+            every.extend(xi)
+            for N in N_VALS:
+                per_N[N].extend(xi[nfree[m] == N])
+        if every:
+            data[stem] = {"per_N": {N: np.array(v) for N, v in per_N.items()},
+                          "all": np.array(every)}
     return data
 
 
@@ -168,19 +206,21 @@ def draw_panel(ax, entry):
 
 
 def build_figure(data, stems, labels):
-    """Assemble the two-panel figure and return it."""
+    """Assemble one panel per run, stacked, and return the figure."""
     present = [s for s in stems if s in data]
     if len(present) < 2:
         raise SystemExit("Need two runs present in the scores file")
+    titles = [labels[stems.index(s)] for s in present]
+    n = len(present)
 
-    fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(6.5, 13))
+    fig, axes = plt.subplots(n, 1, figsize=(6.5, 6.5 * n))
     fig.subplots_adjust(hspace=0.35)
 
-    draw_panel(ax_a, data[present[0]])
-    draw_panel(ax_b, data[present[1]])
-
-    ax_a.set_xlabel("")
-    ax_a.tick_params(labelbottom=False)
+    for ax, stem in zip(axes, present):
+        draw_panel(ax, data[stem])
+    for ax in axes[:-1]:
+        ax.set_xlabel("")
+        ax.tick_params(labelbottom=False)
 
     leg_handles = [
         mlines.Line2D([], [], color="black", marker="D", markersize=5,
@@ -190,10 +230,12 @@ def build_figure(data, stems, labels):
         mlines.Line2D([], [], color="black", lw=1.2, ls="--",
                       label=r"$\xi_\mathrm{rms}$"),
     ]
+    # Legend and colour bar keep their size in inches as panels are added.
     fig.legend(handles=leg_handles, loc="lower center", ncol=3,
-               fontsize=_FS_LEG, framealpha=0.9, bbox_to_anchor=(0.5, 0.025))
+               fontsize=_FS_LEG, framealpha=0.9,
+               bbox_to_anchor=(0.5, 0.025 * 2 / n))
 
-    cbar_ax = fig.add_axes([0.15, -0.015, 0.70, 0.012])
+    cbar_ax = fig.add_axes([0.15, -0.015 * 2 / n, 0.70, 0.012 * 2 / n])
     sm = plt.cm.ScalarMappable(cmap=CMAP, norm=NORM)
     sm.set_array([])
     cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
@@ -201,23 +243,25 @@ def build_figure(data, stems, labels):
     cbar.set_ticks([0, 1, np.sqrt(10)])
     cbar.set_ticklabels(["0", "1", r"$\sqrt{10}$"])
 
-    for ax, lbl, title in [(ax_a, "a", labels[0]), (ax_b, "b", labels[1])]:
+    for ax, lbl, title in zip(axes, "abcdefgh", titles):
         ax.text(-0.18, 1.15, lbl, transform=ax.transAxes,
                 fontsize=_FS_PANEL, fontweight="bold", va="bottom",
                 ha="left", clip_on=False)
         ax.text(1.0, 1.15, title, transform=ax.transAxes, fontsize=_FS,
                 fontweight="bold", ha="right", va="bottom", clip_on=False)
 
-    plt.tight_layout(rect=[0, 0.07, 1, 1])
+    plt.tight_layout(rect=[0, 0.07 * 2 / n, 1, 1])
     return fig
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", default=os.path.join(
-        REPO_ROOT, "results", "2026", "interference_scores_2026.csv"))
+    parser.add_argument("--csv", default=None,
+                        help="per-compound scores file of interference_score.py; "
+                             "default: compute from the predictions of --year")
+    parser.add_argument("--year", default="2025", choices=["2020", "2025", "2026"])
     parser.add_argument("--models", nargs="+", default=DEFAULT_STEMS,
-                        help="two run names without the _s<seed> suffix")
+                        help="run names without the _s<seed> suffix")
     parser.add_argument("--labels", nargs="+", default=DEFAULT_LABELS,
                         help="panel titles, one per run")
     parser.add_argument("--out", default=os.path.join(
@@ -228,7 +272,8 @@ def main():
     if len(labels) != len(args.models):
         labels = list(args.models)
 
-    data = load_distributions(args.csv, args.models)
+    data = (load_distributions(args.csv, args.models) if args.csv
+            else load_from_predictions(args.year, args.models))
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     build_figure(data, args.models, labels)
     plt.savefig(args.out, dpi=300, bbox_inches="tight")

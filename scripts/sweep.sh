@@ -1,6 +1,10 @@
 #!/bin/bash
 # Full training sweep over lam and model variant, for one or more seeds.
 #
+# Every run is scored on its own test folds, so a lam read off this sweep has
+# seen the test set; the revision's numbers use nested.sh, which chooses lam on
+# a validation split. The sweep remains for looking at the whole lam response.
+#
 # Per seed:
 #   [1] iiLoss_save_0.0      stage 1, pure MSE, writes the per-fold checkpoints
 #                            that every stage-2 run for this seed reloads.
@@ -24,13 +28,13 @@ shift || true
 SEEDS=("$@")
 [[ ${#SEEDS[@]} -eq 0 ]] && SEEDS=(0)
 
-SPLIT="allMP_2026"
+SPLIT="allMP_2025"
 VALUES=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
 
-# Two-stage variants only, so surgery-vs-no-surgery is a controlled comparison:
-# *_pcgrad and *_finetune differ solely in the gradient projection.
-# Add iiLoss / HdLoss here to include the single-stage runs as well.
-VARIANTS=(iiLoss_pcgrad iiLoss_finetune HdLoss_pcgrad HdLoss_finetune)
+# Two-stage variants only. iiLossRaw_finetune is the preprint's objective; add
+# iiLoss_pcgrad / HdLoss_pcgrad for gradient surgery, iiLoss / HdLoss for the
+# single-stage runs.
+VARIANTS=(iiLoss_finetune iiLossRaw_finetune HdLoss_finetune)
 
 PYTHON=$(command -v python)
 if [[ -z "${PYTHON}" ]]; then
@@ -50,7 +54,7 @@ TOTAL=$(( PER_SEED * ${#SEEDS[@]} ))
 
 mkdir -p logs
 LOGFILE="logs/sweep_${TARGET}_$(date +%Y%m%d_%H%M%S).log"
-ML_DIR="data/2026/ml/${TARGET}"
+ML_DIR="data/2025/ml/${TARGET}"
 
 log() { echo "$@" | tee -a "$LOGFILE"; }
 
@@ -109,5 +113,5 @@ log "============================================================"
 log "  Sweep complete - $(date)"
 log "  Log: $LOGFILE"
 log "  Evaluate with:"
-log "    python scripts/interference_score.py 2026"
+log "    python scripts/interference_score.py 2025 --summary-only"
 log "============================================================"

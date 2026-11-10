@@ -3,8 +3,9 @@
 Usage
 -----
     python scripts/train_models.py <problem> <target> <model> [seed] [base_width]
-    python scripts/train_models.py allMP_2026 Hf iiLoss_pcgrad_0.3 0
-    python scripts/train_models.py allMP_2026 Hf iiLoss_save_0.0 0 256
+    python scripts/train_models.py allMP_2025 Hf iiLoss_save_0.0 0
+    python scripts/train_models.py allMP_2025 Hf iiLoss_finetune_0.2 0
+    python scripts/train_models.py allMP_2025 Hf iiLossRaw_finetune_0.2 0 256
 
 Predictions are written to data/<year>/ml/<target>/<model>[_w<width>]_s<seed>/
 ml_input.json. The seed defaults to 0 and the base width to 1024, which
@@ -72,7 +73,7 @@ def main(argv):
         print(f"Invalid model selection. Valid choices are {choices}")
         exit(1)
 
-    year = "2026" if "2026" in problem else "2020"
+    year = problem.split("_")[1]
     width_tag = "" if base_width == DEFAULT_BASE_WIDTH else f"_w{base_width}"
     run_name = f"{model_name}{width_tag}_s{seed}"
     output_dir = os.path.join(REPO_ROOT, "data", year, "ml", target, run_name)

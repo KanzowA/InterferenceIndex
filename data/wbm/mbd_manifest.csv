@@ -1,0 +1,74 @@
+model_key,model_name,training_sets,targets,test_task,lifecycle,n_params,url,md5,size,fname,F1,DAF,MAE,RMSE
+alchembert,AlchemBERT,MP 2022,E,IS2RE,active,110000000,https://figshare.com/files/66646304,e2fc28e434b06ba80298d364e5328913,2985758,2024-12-25-discovery.csv.gz,0.436,1.9,0.111,0.171
+alignn,ALIGNN,MP 2022,E,IS2E,superseded,4026753,https://figshare.com/files/66646265,3943041b7e7826019c846718b9e21262,1318215,2023-06-02-discovery.csv.gz,0.565,2.921,0.092,0.154
+alignn-ff-mptrj,ALIGNN-FF MPtrj,MPtrj,EFS_G,IS2RE-SR,active,4057473,https://figshare.com/files/70944999,31835d3f2892507aa10e5cc46ef22baa,1323687,2026-10-24-discovery.csv.gz,0.694,3.685,0.05,0.092
+allegro-mp-l-0.1,Allegro-MP-L,MPtrj,EFS_G,IS2RE-SR,active,18700000,https://figshare.com/files/66646325,fa28d2d661ff30f993a179466c90bdf1,1661321,2025-09-08-discovery.csv.gz,0.742,3.998,0.042,0.085
+allegro-oam-l-0.1,Allegro-OAM-L,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,9700000,https://figshare.com/files/66646322,664493f678e878e6e49d6b954dfc16ed,1579616,2025-09-08-discovery.csv.gz,0.873,4.876,0.021,0.067
+alphanet-v1-mptrj,AlphaNet-v1-MPtrj,MPtrj,EFS_G,IS2RE-SR,superseded,16234332,https://figshare.com/files/66646331,8bd5c7eb8a016ebb6091f2c86d7c5d71,1321073,2025-03-04-discovery.csv.gz,0.789,4.312,0.04,0.091
+alphanet-v1-oam,AlphaNet-v1-OAM,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,4653577,https://figshare.com/files/66646334,c4527dbd82573e664d1885815a90cf54,1300590,2025-07-24-discovery.csv.gz,0.883,5.0,0.023,0.075
+bam-mp-core,BAM-MP-core,MPtrj,EFS_G,IS2RE-SR,superseded,17023365,https://figshare.com/files/67080089,667f4600dd149a8199e187ae391a092e,1343396,2026-05-09-discovery.csv.gz,0.618,3.268,0.058,0.097
+bam-mp-dens,BAM-MP-DeNS,MPtrj,EFS_G,IS2RE-SR,active,6468994,https://figshare.com/files/70285251,6d00bb556e053933477e1f121670eef3,1438844,2026-10-12-discovery.csv.gz,0.75,4.072,0.041,0.082
+bowsr,BOWSR,MP Graphs,E,IS2RE-SR,active,167761,https://figshare.com/files/66646253,aa6a1ade7404b686cf0bd120ba12c623,1293275,2023-01-23-discovery.csv.gz,0.437,1.836,0.114,0.164
+cgcnn-p,CGCNN+P,MP 2022,E,IS2RE,active,128450,https://figshare.com/files/66646301,3f4f5b8c89ca7d8677cbf831ba543f5b,1320526,2023-02-05-discovery.csv.gz,0.51,2.398,0.108,0.178
+cgcnn,CGCNN,MP 2022,E,IS2E,active,128450,https://figshare.com/files/66646295,70ad9a68a1c6e882912e55aabbeee9cb,1610939,2023-01-26-discovery.csv.gz,0.51,2.631,0.135,0.229
+chgnet-0.3.0,CHGNet,MPtrj,EFS_GM,IS2RE-SR,active,412525,https://figshare.com/files/66646268,fd7cd3781a24be465aaeadf97663ce58,1320974,2023-12-21-discovery.csv.gz,0.612,3.038,0.061,0.1
+dpa-3.1-3m-ft,DPA-3.1-3M-FT,OpenLAM,EFS_G,IS2RE-SR,superseded,3268838,https://figshare.com/files/66646172,48dfb1deb89cda283cc2d7308565463c,1319461,2025-06-05-discovery.csv.gz,0.864,4.912,0.022,0.067
+dpa-3.1-mptrj,DPA-3.1-MPtrj,MPtrj,EFS_G,IS2RE-SR,superseded,4810679,https://figshare.com/files/66646163,16a8a02bc8ff00c66170a0df9449bd11,1320322,2025-06-05-discovery.csv.gz,0.789,4.419,0.036,0.079
+dpa-4.0-pro-mptrj,DPA-4.0-Pro-MPtrj,MPtrj,EFS_G,IS2RE-SR,superseded,32724908,https://figshare.com/files/66646169,537be5f47fb938c415af623ce22b6772,1316182,2026-05-12-discovery.csv.gz,0.832,4.943,0.029,0.076
+dpa-4.0.1-pro-mptrj,DPA-4.0.1-Pro-MPtrj,MPtrj,EFS_G,IS2RE-SR,active,22808191,https://figshare.com/files/66646151,78fd7c8365a29446e25c317a152626ca,1316682,2026-06-05-discovery.csv.gz,0.837,4.874,0.028,0.074
+dpa-4.1-air-oam,DPA-4.1-Air-OAM,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,5147909,https://ndownloader.figshare.com/files/70537227,ed3468de9c4235fac3c3187725492812,1315780,2026-10-03-discovery.csv.gz,0.902,5.223,0.019,0.067
+dpa-4.1-max-oam-pft,DPA-4.1-Max-OAM-PFT,MPtrj+OMat24+sAlex+MDR-MP PBE ω_q,EFSH_G,IS2RE-SR,active,99005146,https://ndownloader.figshare.com/files/70836372,5b512c60ef4817efcecdbb90a11bf07a,1315880,2026-10-27-discovery.csv.gz,0.914,5.297,0.017,0.066
+dpa-4.1-max-oam,DPA-4.1-Max-OAM,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,99009258,https://ndownloader.figshare.com/files/70537422,c44c675c5d14ae3f9b11da3ea1359caa,1316469,2026-10-21-discovery.csv.gz,0.913,5.407,0.017,0.066
+dpa-4.1c-air-oam,DPA-4.1C-Air-OAM,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,433673,https://ndownloader.figshare.com/files/70537575,c1f8f7ed35dde8e6812a2e8048a5cd05,1315918,2026-10-06-discovery.csv.gz,0.783,4.486,0.034,0.075
+dpa3-v1-mptrj,DPA3-v1-MPtrj,MPtrj,EFS_G,IS2RE-SR,superseded,3374647,https://figshare.com/files/66646145,2c60b30c8fe977220e3db0ca8062ee1a,1321018,2025-01-10-discovery.csv.gz,0.757,4.13,0.04,0.082
+dpa3-v1-openlam,DPA3-v1-OpenLAM,OpenLAM,EFS_G,IS2RE-SR,superseded,8184608,https://figshare.com/files/66646160,b4b6a3101ab8450448e9e08cfb340e6b,1319833,2025-01-10-discovery.csv.gz,0.862,5.013,0.023,0.067
+dpa3-v2-mptrj,DPA3-v2-MPtrj,MPtrj,EFS_G,IS2RE-SR,superseded,4923959,https://figshare.com/files/66646166,69351fa5c91979b77a5df1905af4da3f,1321085,2025-03-14-discovery.csv.gz,0.774,4.249,0.038,0.08
+dpa3-v2-openlam,DPA3-v2-OpenLAM,OpenLAM,EFS_G,IS2RE-SR,superseded,7021990,https://figshare.com/files/66646157,e8c49717dd5ab11c161040593b511a8d,1319690,2025-03-14-discovery.csv.gz,0.869,4.977,0.022,0.067
+ema-gnn,EMA-GNN,MP 2022,E,IS2E,active,2209793,https://figshare.com/files/67473963,b9519003656f1083e1a8dcc7c3915944,3021075,2026-07-29-discovery.csv.gz,0.566,2.522,0.084,0.141
+eqnorm-mptrj,Eqnorm MPtrj,MPtrj,EFS_G,IS2RE-SR,active,1310024,https://figshare.com/files/66646190,da1f1f8ef7f6dd63fd0af185395ace40,1510639,2025-06-16-discovery.csv.gz,0.779,4.296,0.038,0.081
+equflash-29m-oam,EquFlash,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,28741188,https://figshare.com/files/66646271,20f3e747f848fc3f74999c5671f66e02,2771470,2025-06-23-discovery.csv.gz,0.9,5.214,0.019,0.066
+equflashv2-45m-oam,EquFlashV2,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,44890492,https://figshare.com/files/66646274,7e498aabe04e32112b632219333aac44,2576423,2026-06-11-discovery.csv.gz,0.91,5.291,0.018,0.066
+equiformer-v3-mp,EquiformerV3+DeNS-MP,MPtrj,EFS_G,IS2RE-SR,active,30278113,https://figshare.com/files/66646223,d165d1a3ca4ece89e41785c152d937e5,1554589,2026-04-07-discovery.csv.gz,0.848,4.778,0.028,0.073
+equiformer-v3-oam,EquiformerV3+DeNS-OAM,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,30333409,https://figshare.com/files/66646220,3df9f3ce50957dfc349c678fa4926616,1654051,2026-04-07-discovery.csv.gz,0.912,5.298,0.017,0.067
+eqv2-m-omat-salex-mp,eqV2 M,MPtrj+OMat24,EFS_D,IS2RE-SR,active,86589068,https://figshare.com/files/66646142,3658def6173e02579455ba480ff77ea4,1327151,2024-10-18-discovery.csv.gz,0.896,5.243,0.02,0.071
+eqv2-s-dens-mp,eqV2 S DeNS,MPtrj,EFS_D,IS2RE-SR,active,31207434,https://figshare.com/files/66646139,e8da37c6c7f3fa3f7cec666d2d0d8706,1326011,2024-10-18-discovery.csv.gz,0.798,4.362,0.035,0.084
+esen-30m-mp,eSEN-30M-MP,MPtrj,EFS_G,IS2RE-SR,active,30085121,https://figshare.com/files/66646343,11c30079072c928109cb826be9af3671,1316973,2025-03-17-discovery.csv.gz,0.819,4.616,0.032,0.077
+esen-30m-oam,eSEN-30M-OAM,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,30161153,https://figshare.com/files/66646340,9b58f65f581aa6785e48e693d3ee842d,1318830,2025-03-17-discovery.csv.gz,0.902,5.281,0.018,0.067
+esnet,ESNet,MP 2022,E,IS2E,active,5429033,https://figshare.com/files/66646337,a26c63d6e63c9007fc1e4e88a14a79bf,1333389,2025-06-20-discovery.csv.gz,0.568,3.151,0.107,0.193
+gnome,NequIP-GNoME,GNoME,EF_G,IS2RE-SR,active,16240000,https://figshare.com/files/66646214,89abd091bf20aeaf4523b9658c3db2fe,2184112,2023-11-01-discovery.csv.gz,0.81,4.81,0.034,0.083
+grace-1l-oam,GRACE-1L-OAM,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,3447148,https://figshare.com/files/66646127,864e68c60d7561206573b56a6d3c4e1e,2763538,2025-02-02-discovery.csv.gz,0.808,4.617,0.03,0.073
+grace-2l-mptrj,GRACE-2L-MPtrj,MPtrj,EFS_G,IS2RE-SR,active,15346704,https://figshare.com/files/66646121,9facad7ad912e5292ba43b265ecf4969,1321082,2024-11-11-discovery.csv.gz,0.687,3.714,0.05,0.092
+grace-2l-oam-l,GRACE-2L-OAM-L,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,26394284,https://figshare.com/files/66646115,e94f216dba2133d3d778703edc0843df,1657157,2025-09-09-discovery.csv.gz,0.862,5.093,0.022,0.068
+grace-2l-oam,GRACE-2L-OAM,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,12597516,https://figshare.com/files/66646118,fea4f78efa39cfe1076736539ef3ef3f,2763931,2025-01-28-discovery.csv.gz,0.861,5.046,0.023,0.068
+grace-3l-oam-l,GRACE-3L-OAM-L,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,42112223,https://figshare.com/files/66646130,a3799dbf73afef4cc709105d78312b13,2889887,2026-07-02-discovery.csv.gz,0.905,5.259,0.018,0.065
+hienet,HIENet,MPtrj,EFS_G,IS2RE-SR,active,7510280,https://figshare.com/files/66646133,50525b716267ba5e4396a6be01d83dc1,1322880,2025-07-01-discovery.csv.gz,0.766,4.361,0.039,0.082
+m3gnet,M3GNet,MPF,EFS_G,IS2RE-SR,active,227549,https://figshare.com/files/66646262,76f83ffd2f281e2f8b660cffdb96a172,1320744,2023-12-28-discovery.csv.gz,0.576,2.647,0.072,0.115
+mace-mp-0,MACE-MP-0,MPtrj,EFS_G,IS2RE-SR,active,4688656,https://figshare.com/files/66646193,5e231a2b3a029714b984890a6fbe5002,1322814,2023-12-11-discovery.csv.gz,0.668,3.4,0.055,0.099
+mace-mpa-0,MACE-MPA-0,MPtrj+sAlex,EFS_G,IS2RE-SR,active,9063204,https://figshare.com/files/66646196,69c5b43ed1bc972ba623627438e7653b,1324924,2024-12-09-discovery.csv.gz,0.836,4.869,0.028,0.073
+mace-soyo-mptrj,MACE-SOYO-MPtrj,MPtrj,EFS_G,IS2RE-SR,active,6429511,https://ndownloader.figshare.com/files/70344495,2696b18477437cfae3cb6fe35ac38c6c,1316605,2026-10-19-discovery.csv.gz,0.77,4.242,0.04,0.081
+mace-soyo-oam,MACE-SOYO-OAM,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,6475336,https://ndownloader.figshare.com/files/70537083,f59c1e871c168031c5c303b412b2280b,1315353,2026-10-22-discovery.csv.gz,0.883,5.175,0.02,0.067
+matris-10m-mp,MatRIS-10M-MP,MPtrj,EFS_GM,IS2RE-SR,active,10443505,https://figshare.com/files/66646229,bcea55fe714b0bf1a7c8d09ba4dc4221,1318519,2025-10-29-discovery.csv.gz,0.832,4.744,0.03,0.076
+matris-10m-oam,MatRIS-10M-OAM,MPtrj+OMat24+sAlex,EFS_GM,IS2RE-SR,active,10443505,https://figshare.com/files/66646226,bbbb50212f3c5acbd305aacbaf420bc3,1317288,2025-10-29-discovery.csv.gz,0.903,5.275,0.019,0.066
+matris-v050-mptrj,MatRIS v0.5.0 MPtrj,MPtrj,EFS_GM,IS2RE-SR,superseded,5825620,https://figshare.com/files/66646235,6c7fcb8a5574e71054a93a567c302d98,1322924,2025-03-12-discovery.csv.gz,0.798,4.456,0.035,0.08
+mattersim-v1-5m,MatterSim v1 5M,MatterSim,EFS_G,IS2RE-SR,active,4549142,https://figshare.com/files/66646208,3779100dfaa5b2f733464006287ed9e0,2894333,2024-12-16-discovery.csv.gz,0.838,5.123,0.024,0.069
+megnet,MEGNet,MP Graphs,E,IS2E,active,167761,https://figshare.com/files/66646259,dc11b7fe709c309f2c5b853114b7f315,1336003,2022-11-18-discovery.csv.gz,0.513,2.699,0.128,0.204
+nequip-mp-l-0.1,Nequip-MP-L,MPtrj,EFS_G,IS2RE-SR,active,9600000,https://figshare.com/files/66646181,2afd042f9c986c60cc329f8ff8b5f3b2,1661375,2025-08-27-discovery.csv.gz,0.752,4.136,0.041,0.083
+nequip-oam-l-0.1,Nequip-OAM-L,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,9600000,https://figshare.com/files/66646175,5d13ab672ecb7539adb7c01672541134,1579363,2025-08-27-discovery.csv.gz,0.87,5.06,0.022,0.068
+nequip-oam-xl-0.1,Nequip-OAM-XL,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,32100000,https://figshare.com/files/66646184,2ef055b102beb62e4d9a7e742524248b,1571114,2025-11-30-discovery.csv.gz,0.885,5.098,0.02,0.066
+nequix-mp-1-pft,Nequix MP PFT,MPtrj+MDR-MP PBE ω_q,EFSH_G,IS2RE-SR,active,707658,https://figshare.com/files/66646202,dbcba569bcb0f28b0d69581d79c720b3,1511054,2026-01-12-discovery.csv.gz,0.74,3.963,0.042,0.084
+nequix-mp-1,Nequix MP,MPtrj,EFS_G,IS2RE-SR,active,707658,https://figshare.com/files/66646199,75027984e17c77bfacc160e9e6078c90,1376646,2025-08-17-discovery.csv.gz,0.744,3.95,0.042,0.084
+orb-v2-mptrj,ORB v2 MPtrj,MPtrj,EFS_D,IS2RE-SR,active,25161727,https://figshare.com/files/66646292,7ad5e62654b2b3511b912a939c085d36,1325089,2024-10-14-discovery.csv.gz,0.755,4.188,0.043,0.09
+orb-v2,ORB v2 MPA,MPtrj+Alex,EFS_D,IS2RE-SR,active,25161727,https://figshare.com/files/66646283,114a3fa62efe1ae549a0cf13c752aa25,1325696,2024-10-11-discovery.csv.gz,0.858,5.281,0.028,0.078
+orb-v3,ORB v3,MPtrj+Alex+OMat24,EFS_G,IS2RE-SR,active,25510582,https://figshare.com/files/66646289,87b2195d204240eea7e1801afd0ea71a,1658080,2025-04-04-discovery.csv.gz,0.887,5.159,0.023,0.076
+pet-oam-xl-1.0.0,PET-OAM-XL,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,730000000,https://figshare.com/files/66646256,0e7d1c2f73118eadd33dc777ab48eb0a,1315508,2026-01-10-discovery.csv.gz,0.904,5.312,0.018,0.068
+prophet-oame-mbd,Prophet-OAME-MBD,MPtrj+OMat24+sAlex+ELEMENTA,EFS_G,IS2RE-SR,active,62296064,https://figshare.com/files/68516800,d0c5052a8911f4386305af963900ae86,3093641,2026-09-03-discovery.csv.gz,0.91,5.286,0.018,0.067
+sevennet-0,SevenNet-0,MPtrj,EFS_G,IS2RE-SR,superseded,842440,https://figshare.com/files/66646307,76a001eb17dbcfe952c2df74f0b18e8c,1658370,2024-07-11-discovery.csv.gz,0.719,3.804,0.046,0.09
+sevennet-l3i5,SevenNet-l3i5,MPtrj,EFS_G,IS2RE-SR,active,1171144,https://figshare.com/files/66646319,05b0b77a24264da18c899f5a24d18791,1657501,2024-12-10-discovery.csv.gz,0.751,4.112,0.042,0.086
+sevennet-mf-ompa,SevenNet-MF-ompa,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,superseded,25734966,https://figshare.com/files/66646313,bbee516a1b6b2cc154d012d9283ac33f,1344444,2025-03-11-discovery.csv.gz,0.884,5.082,0.021,0.067
+sevennet-omni-i12,SevenNet-Omni-i12,COSMOSDataset,EFS_G,IS2RE-SR,active,54921363,https://figshare.com/files/66646316,8de869237eeb3cff00e30339233170ec,1338289,2026-01-12-discovery.csv.gz,0.887,5.203,0.02,0.067
+tace-oam-l,TACE-OAM-L,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,82899905,https://figshare.com/files/66646247,deecc3cbb9f2695f5e5ce1763e216ba6,1648063,2026-04-09-discovery.csv.gz,0.892,5.127,0.02,0.067
+tace-oam-rra-preview,TACE-OAM-RRA-Preview,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,superseded,213690158,https://figshare.com/files/66646238,35baa72d394b562b890b25de4d8dcda0,1648904,2026-06-27-discovery.csv.gz,0.909,5.295,0.018,0.067
+tace-v1-oam-m,TACE-v1-OAM-M,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,superseded,18779248,https://figshare.com/files/66646250,1b511913eac359e39b6d2d902b8cece5,1647915,2026-01-06-discovery.csv.gz,0.868,4.986,0.022,0.068
+tece-oam-rra-1.0,TECE-OAM-RRA-1.0,MPtrj+OMat24+sAlex,EFS_G,IS2RE-SR,active,221853358,https://figshare.com/files/66646241,3db866edbc4a6bc337c9d2abd04f5210,1648875,2026-07-05-discovery.csv.gz,0.91,5.3,0.017,0.066
+voronoi-rf,Voronoi RF,MP 2022,E,IS2E,active,26243464,https://figshare.com/files/66646205,0f401e0af05e4b863ac2f94a24966f94,1316225,2022-11-27-discovery.csv.gz,0.344,1.509,0.141,0.206
+wrenformer,Wrenformer,MP 2022,E,IP2E,active,5166658,https://figshare.com/files/66646136,5d8f9eecf0cfcb2a7f9901af68f3f16e,1619355,2022-11-15-discovery.csv.gz,0.479,2.13,0.105,0.182

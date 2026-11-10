@@ -29,6 +29,13 @@ SCORES_2026 = ("results/2026/interference_scores_2026.csv",
                "python scripts/interference_score.py 2026")
 CURVES = ("data/2026/ml/Hf/*_finetune_*_s*/training_curve.csv",
           "bash scripts/sweep.sh Hf 0 1 2   (or restore data/ from Zenodo)")
+SELECTION = ("results/2025/nested/selection_s*_f*.json",
+             "bash scripts/nested.sh   (the logs are tracked in git)")
+PREDS_2025 = ("data/2025/ml/Hf/iiLoss_nested_s*/ml_input.json",
+              "tar xzf predictions_2025.tar.gz   (from Zenodo) or bash scripts/nested.sh")
+SPECTRAL_2025 = ("results/2025/spectral_summary_2025.csv",
+                 "python scripts/spectral_score.py 2025")
+MLIP = ("results/wbm/mlip_closed.csv", "python scripts/mlip_score.py")
 
 # -- Figures ---------------------------------------------------------------
 # (key, label, script, extra arguments, required inputs)
@@ -44,12 +51,11 @@ FIGURES = [
     ("3", "Gradient field panel",
      "scripts/figures/fig3.py", [], []),
 
-    ("4", "Lambda sweep - iiLoss / HdLoss / PCGrad",
-     "scripts/figures/fig4.py",
-     ["--csv", "results/2026/interference_summary_2026.csv"], []),
+    ("4", "Lambda on the validation split, and the lambda it selects",
+     "scripts/figures/fig4.py", [], [SELECTION]),
 
     ("5", "Interference index before and after training",
-     "scripts/figures/fig5.py", [], [SCORES_2026]),
+     "scripts/figures/fig5.py", [], [PREDS_2025]),
 
     ("S1", "Convergence of the fine-tuning stage - iiLoss",
      "scripts/figures/figS1.py", [], [CURVES]),
@@ -57,8 +63,11 @@ FIGURES = [
     ("S2", "Convergence of the fine-tuning stage - HdLoss",
      "scripts/figures/figS2.py", [], [CURVES]),
 
-    ("S3", "Capacity dependence of the regularisation",
-     "scripts/figures/figS3.py", [], []),
+    ("S3", "Capacity dependence of interference-aware training",
+     "scripts/figures/figS3.py", [], [SPECTRAL_2025]),
+
+    ("S4", "Interference diagnostic for the Matbench Discovery models",
+     "scripts/figures/figS4.py", [], [MLIP]),
 ]
 
 

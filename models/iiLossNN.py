@@ -1,5 +1,39 @@
 """
 iiLossNN - ElementFraction MLP trained with a normalised MSE + xi^2 loss.
+
+The penalty is the interference index of every training-fold decomposition
+reaction, xi_j^2 = (sum_k c_jk)^2 / sum_k c_jk^2 with c_jk = S_jk delta_k, but
+built so that it can only be lowered by cancelling errors:
+
+  * gauge projection (`project`). Shifting every formation enthalpy by a
+    linear function of composition, delta -> delta + X mu, moves no balanced
+    reaction enthalpy, yet inflates every denominator. The penalty is built
+    from the residual with that composition-linear direction removed, in the
+    Delta_Astat (W) metric, so drifting along it buys nothing. The MSE term
+    still charges for it in full.
+  * frozen normalisation (`freeze_den`). The per-reaction denominators are
+    fixed at the reference model's own spreads when the loss references are
+    taken, and carry no gradient, so the penalty becomes a Delta_Astat-weighted
+    sum of squared decomposition errors and no residual can be grown to lower it.
+
+The objective of the first preprint (chemRxiv, v1) is the same class with both
+switched off, `project=False, freeze_den=False`; process.py registers it as
+`iiLossRaw_*`. Everything else, architecture, schedule, references and seeding,
+is shared, so the two differ only in the penalty and a lam = 0 run is identical
+for both.
+
+The projection, per fold and once:
+
+    w_i  = sum_{j : N_j >= 2} C[j, i]^2          (index_add over the padded rows)
+    Q    = orthonormal basis of col( W^{1/2} X ) (economy SVD, rank ~86)
+
+and per step, on the residual,
+
+    u        = W^{1/2} delta
+    delta_p  = delta - W^{-1/2} Q Q^T u
+
+Compounds that carry no weight (no N >= 2 reaction) are left alone: the W
+metric says nothing about them and they enter no xi statistic.
 """
 
 import csv
@@ -106,7 +140,9 @@ class iiLossNN(nn.Module):
         Fraction of epochs held at lam=0 before ramping to the target lam.
     renorm_every : int
         Recompute the loss reference scales every N epochs; 0 fixes them at
-        their epoch-0 values.
+        their epoch-0 values. With `freeze_den` this also refreshes the frozen
+        denominators, so stage two (renorm_every = 0) holds them at the
+        stage-one model's spreads for the whole run.
     grad_clip : float
         Maximum gradient norm; 0 disables clipping.
     device : str or None
@@ -128,6 +164,17 @@ class iiLossNN(nn.Module):
         Base seed. Each fold derives its own RNG state from (seed, fold).
     history_path : str or None
         CSV to append the per-epoch training curve to.
+    project : bool
+        Build the penalty from the gauge-projected residual delta_perp.
+    freeze_den : bool
+        Hold the per-reaction denominators fixed (detached) between reference
+        refreshes, so no denominator can be inflated to lower the penalty.
+    gauge_tol : float
+        Relative singular-value cutoff for the rank of the gauge basis.
+    report_gauge : bool
+        Log the gauge share of the residual, the fraction of its W-energy in
+        the composition-linear direction. It should stay near its lam = 0
+        value rather than climb with lam.
     """
 
     model_type = "ii_nn"
@@ -153,6 +200,10 @@ class iiLossNN(nn.Module):
         pcgrad_conditional = False,
         seed            = 0,
         history_path    = None,
+        project         = True,
+        freeze_den      = True,
+        gauge_tol       = 1e-10,
+        report_gauge    = True,
     ):
         super().__init__()
         self.target          = target
@@ -175,12 +226,22 @@ class iiLossNN(nn.Module):
         self.pcgrad_conditional = pcgrad_conditional
         self.seed            = seed
         self.history_path    = history_path
+        self.project         = project
+        self.freeze_den      = freeze_den
+        self.gauge_tol       = gauge_tol
+        self.report_gauge    = report_gauge
         self.history         = []
 
         self._labels      = None
         self._data        = None
         self._net         = None
         self._fold_counter = 0
+
+        # Per-fold gauge machinery, rebuilt in every fit().
+        self._Q       = None
+        self._keep    = None
+        self._sw_keep = None
+        self._den_ref = None
 
     # -- MLModel interface ------------------------------------------------
 
@@ -263,6 +324,21 @@ class iiLossNN(nn.Module):
             has_rxn = False
             print("  [iiLossNN] Warning: no reactions in fold - pure MSE.")
 
+        X_t = torch.tensor(X_feat, dtype=torch.float32, device=dev)
+        Y_t = torch.tensor(Y,      dtype=torch.float32, device=dev)
+
+        # -- The gauge basis for this fold --------------------------------
+        self._den_ref = None
+        if has_rxn:
+            # Built whether or not the penalty uses it: the gauge share is the
+            # diagnostic that says whether a run is drifting, and an
+            # iiLossRaw_* run is exactly the one that drifts.
+            self._build_gauge(X_t, R_idx, R_coeff, R_mask, dev)
+        else:
+            self._Q = None
+        print(f"  [iiLossNN] penalty: project={self.project} "
+              f"freeze_den={self.freeze_den}")
+
         input_dim = X_feat.shape[1]
         self._net = _ResidualMLP(input_dim, self.hidden, self.dropout).to(dev)
 
@@ -291,9 +367,6 @@ class iiLossNN(nn.Module):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=actual_epochs, eta_min=actual_lr * 0.01
         )
-
-        X_t = torch.tensor(X_feat, dtype=torch.float32, device=dev)
-        Y_t = torch.tensor(Y,      dtype=torch.float32, device=dev)
 
         # lam is held at 0 for the first warmup_frac of epochs, ramped over
         # the next warmup_frac, then held at its target value.
@@ -346,10 +419,7 @@ class iiLossNN(nn.Module):
                 optimizer.zero_grad()
                 pred      = self._net(X_t)
                 delta     = pred - Y_t
-                c         = R_coeff * delta[R_idx] * R_mask
-                num       = c.sum(dim=1) ** 2
-                den       = (c ** 2).sum(dim=1) + self.eps
-                xi_loss   = (num / den).mean() / xi2_ref
+                xi_loss   = self._xi_term(delta, R_idx, R_coeff, R_mask) / xi2_ref
                 xi_loss.backward()
                 g_xi = [p.grad.detach().clone() if p.grad is not None
                         else torch.zeros_like(p)
@@ -379,10 +449,7 @@ class iiLossNN(nn.Module):
                 mse_loss  = (delta ** 2).mean() / mse_ref
 
                 if has_rxn and lam_eff > 0:
-                    c       = R_coeff * delta[R_idx] * R_mask
-                    num     = c.sum(dim=1) ** 2
-                    den     = (c ** 2).sum(dim=1) + self.eps
-                    xi_loss = (num / den).mean() / xi2_ref
+                    xi_loss = self._xi_term(delta, R_idx, R_coeff, R_mask) / xi2_ref
                 else:
                     xi_loss = torch.zeros(1, device=dev).squeeze()
 
@@ -395,13 +462,19 @@ class iiLossNN(nn.Module):
             optimizer.step()
             scheduler.step()
 
-            self.history.append({
+            record = {
                 "fold": fold_idx, "seed": self.seed, "epoch": epoch,
                 "lam_eff": lam_eff,
                 "mse_over_ref": float(mse_loss),
                 "penalty_over_ref": float(xi_loss),
                 "total": float(loss),
-            })
+            }
+            if self.report_gauge and has_rxn:
+                # The residual from this step's forward pass, not a fresh one:
+                # a second forward over the whole fold would cost as much as
+                # the training step itself.
+                record["gauge_share"] = self._gauge_share(delta.detach())
+            self.history.append(record)
 
             if epoch % 50 == 0 or epoch == actual_epochs - 1:
                 phase = ("warmup" if epoch < warmup_end
@@ -413,7 +486,10 @@ class iiLossNN(nn.Module):
                        f"MSE/ref={mse_loss.item():.5f}  "
                        f"lam_eff={lam_eff:.3f}")
                 if lam_eff > 0 and has_rxn:
-                    msg += f"  xi2/ref={xi_loss.item():.5f}"
+                    name = "xi_perp2" if self.project else "xi2"
+                    msg += f"  {name}/ref={xi_loss.item():.5f}"
+                if "gauge_share" in record:
+                    msg += f"  gauge={100 * record['gauge_share']:.1f}%"
                 print(msg)
 
         self._net.eval()
@@ -440,6 +516,83 @@ class iiLossNN(nn.Module):
         """Fit on the training fold and predict the held-out fold."""
         return self.fit(Xtrain, Ytrain).predict(Xtest)
 
+    # -- The gauge projection ---------------------------------------------
+
+    def _build_gauge(self, X_t, R_idx, R_coeff, R_mask, dev):
+        """Delta_Astat weights and an orthonormal gauge basis, for this fold.
+
+        w accumulates over the reaction rows actually kept, which are the
+        N >= 2 ones -- a row is only built when it has at least one
+        non-elemental product -- so these are the Delta_Astat weights of the
+        training fold's own reaction network.
+        """
+        n = X_t.shape[0]
+        w = torch.zeros(n, dtype=torch.float64, device=dev)
+        contrib = (R_coeff * R_mask).double() ** 2
+        w.index_add_(0, R_idx.reshape(-1), contrib.reshape(-1))
+
+        keep = w > 0
+        if not bool(keep.any()):
+            self._Q = None
+            return
+
+        sw_keep = w[keep].sqrt()
+        U = X_t[keep].double() * sw_keep.unsqueeze(1)
+        live = U.abs().sum(dim=0) > 0            # elements absent from this fold
+        U = U[:, live]
+
+        # Economy SVD rather than QR: the left singular vectors span the same
+        # subspace and the rank cut is unambiguous under column collinearity.
+        Uq, S, _ = torch.linalg.svd(U, full_matrices=False)
+        rank = int((S > self.gauge_tol * S.max()).sum())
+
+        self._Q       = Uq[:, :rank].to(X_t.dtype).contiguous()
+        self._keep    = keep.nonzero(as_tuple=False).squeeze(1)
+        self._sw_keep = sw_keep.to(X_t.dtype)
+
+        print(f"  [iiLossNN] gauge basis: rank {rank} over "
+              f"{int(live.sum())} elements, {int(keep.sum())} of {n} compounds "
+              f"carry Delta_Astat weight")
+
+    def _perp(self, delta):
+        """Component of the residual outside the gauge subspace, in the W metric."""
+        if self._Q is None:
+            return delta
+        u   = delta[self._keep] * self._sw_keep
+        par = self._Q @ (self._Q.t() @ u)
+        return delta.index_add(0, self._keep, -par / self._sw_keep)
+
+    def _gauge_share(self, delta):
+        """Fraction of the residual's W-energy inside the gauge subspace."""
+        if self._Q is None:
+            return float("nan")
+        u  = delta[self._keep] * self._sw_keep
+        a  = self._Q.t() @ u
+        uu = float(u @ u)
+        return float(a @ a) / uu if uu > 0 else float("nan")
+
+    def _reaction_terms(self, delta, R_idx, R_coeff, R_mask):
+        """The c_jk of each reaction, from delta_perp or from delta itself."""
+        dp = self._perp(delta) if self.project else delta
+        return R_coeff * dp[R_idx] * R_mask
+
+    def _xi_term(self, delta, R_idx, R_coeff, R_mask):
+        """Mean per-reaction xi^2, under whichever fixes are enabled.
+
+        With `project`, `delta` is replaced by `delta_perp`, which makes the
+        term exactly invariant under adding any composition-linear shift.
+        With `freeze_den`, the denominators come from `self._den_ref` and carry
+        no gradient, so the term is a Delta_Astat-weighted sum of squared
+        decomposition errors and cannot be lowered by growing the residual.
+        With neither, this is the published (v1) penalty exactly.
+        """
+        c   = self._reaction_terms(delta, R_idx, R_coeff, R_mask)
+        num = c.sum(dim=1) ** 2
+        if self.freeze_den and self._den_ref is not None:
+            den = self._den_ref
+        else:
+            den = (c ** 2).sum(dim=1) + self.eps
+        return (num / den).mean()
 
     # -- Internal helpers -------------------------------------------------
 
@@ -477,6 +630,7 @@ class iiLossNN(nn.Module):
 
         Both terms are divided by these so that lam weights them comparably;
         without it lam would not mean the same thing across the two losses.
+        The xi reference uses the projected residual, matching the penalty.
         """
         var_y = Y_t.var(unbiased=False).clamp(min=1e-6)
         with torch.no_grad():
@@ -490,10 +644,14 @@ class iiLossNN(nn.Module):
             mse_ref = (delta0 ** 2).mean().clamp(min=var_y)
 
             if has_rxn:
-                c0      = R_coeff * delta0[R_idx] * R_mask
-                num0    = c0.sum(dim=1) ** 2
-                den0    = (c0 ** 2).sum(dim=1) + self.eps
-                xi2_ref = (num0 / den0).mean().clamp(min=1e-6)
+                if self.freeze_den:
+                    # Fix Delta_Astat at the current model state. In stage two
+                    # renorm_every is 0, so these are the baseline model's own
+                    # per-reaction spreads and stay fixed for the whole run.
+                    c0 = self._reaction_terms(delta0, R_idx, R_coeff, R_mask)
+                    self._den_ref = (c0 ** 2).sum(dim=1) + self.eps
+                xi2_ref = self._xi_term(delta0, R_idx, R_coeff,
+                                        R_mask).clamp(min=1e-6)
             else:
                 xi2_ref = torch.ones(1, device=dev)
 
