@@ -20,6 +20,8 @@ What is computed from it
                 threshold-free max-F1, ROC-AUC and PR-AUC
     ML hull     the hull rebuilt from the model's own formation enthalpies, by LP,
                 and each compound classified by its distance to it
+    error split the change of each reaction error between two models, split
+                into the part carried by xi and the part carried by |c|
 
 The 2020 hullout stores formula-unit amounts; they are rescaled to per-atom
 weights by N_k / N_c, detected from the data as interference_score.py does.
@@ -198,6 +200,30 @@ def free_sizes(H):
     n = np.zeros(H["R"], int)
     np.add.at(n, H["rows"], (H["cols"] < H["ncomp"]).astype(int))
     return n
+
+
+def product_counts(H):
+    """For every compound, the number of reactions it enters as a product."""
+    n = np.zeros(H["M"], int)
+    np.add.at(n, H["cols"], 1)
+    return n[:H["ncomp"]] - 1                  # less its own decomposition
+
+
+def error_split(y0, r0, y1, r1):
+    """Split the change of |(S delta)_j| into a xi part and a |c| part.
+
+    Every reaction error factorises as |y| = xi |c|, with |c| = sqrt(q). The
+    change from model 0 to model 1 is split symmetrically (the Shapley split of
+    a product), so that per reaction
+
+        |y1| - |y0| = dxi (|c0| + |c1|) / 2  +  d|c| (xi0 + xi1) / 2
+
+    holds exactly. Reactions with |c| = 0 carry no error and contribute zero.
+    """
+    def xi(y, r):
+        return np.divide(np.abs(y), r, out=np.zeros_like(r), where=r > 0)
+    x0, x1 = xi(y0, r0), xi(y1, r1)
+    return (x1 - x0) * (r0 + r1) / 2, (r1 - r0) * (x0 + x1) / 2
 
 
 def complete_rows(H, have):

@@ -107,8 +107,8 @@ preprint, in `results/paper_numbers.md`, written by `scripts/paper_numbers.py`.
         ├── fig1.py              # Interference circles, conceptual
         ├── fig2.py              # Model comparison, allMP 2020
         ├── fig3.py              # Gradient fields, MSE against xi squared
-        ├── fig4.py              # Lambda on the validation split, and the lambda selected
-        ├── fig5.py              # xi before and after training
+        ├── fig4.py              # Lambda on the validation split; S5 adds iiLossRaw
+        ├── fig5.py              # xi, dH_d errors and their xi / |c| split; S6 for iiLossRaw
         ├── figS1.py             # Convergence, iiLoss (preprint)
         ├── figS2.py             # Convergence, HdLoss (preprint)
         ├── figS3.py             # Capacity dependence

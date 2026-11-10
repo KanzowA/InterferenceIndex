@@ -1,26 +1,34 @@
-"""Figure 5: xi distribution before and after interference-aware training.
+"""Figure 5: what interference-aware training changes, reaction by reaction.
 
-    (a) matched control (lam = 0)
-    (b) the preprint's objective, iiLossRaw at lam = 0.2
-    (c) iiLoss, lam chosen on the validation split
+    (a) xi, matched control (lam = 0)     (b) xi, iiLoss (lam from validation)
+    (c) distribution of dH_d,ML - dH_d,DFT, control and iiLoss
+    (d) change of MAE(dH_d) against N
+    (e) the same change split into its xi part and its |c| part
+    (f) change of MAE(dH_f) against the number of reactions a compound enters
+        as a decomposition product
 
-Layout follows fig1.py; only the data source differs, so the trained model can
-be read directly against the reference distributions shown there. Rows are
-pooled over seeds: every run whose name is the given stem, with or without an
-_s<seed> suffix, contributes to the same panel.
+Figure S6 is the same layout for the preprint's objective, iiLossRaw at
+lam = 0.2, against the same control.
 
-The xi values come either from a per-compound scores file written by
-interference_score.py (--csv), or, by default, straight from the predictions in
-data/<year>/ml/Hf/ (--year), computed with spectral.py; the 2025 scores file
-would be several GB. Both give the same xi, N and reaction set.
+Every number is computed from the out-of-fold predictions in
+data/<year>/ml/Hf/, with spectral.py. Each model is paired with the control of
+the same seed; bars are means over the seeds and error bars the sample standard
+deviation. Panels a and b pool the seeds, as fig1.py pools models. Panel e uses
+the exact split |y| = xi |c| of spectral.error_split, so its two bars add up to
+the bar of panel d at every N.
 
-Arcs and scatter are drawn for N <= 10 to keep the fig1 frame, while
-xi_rms and the reported fraction are computed over all reactions, so they match
-the summary table.
+Arcs and scatter of panels a and b are drawn for N <= 10 to keep the fig1
+frame, while xi_rms and the reported fraction are computed over all reactions,
+so they match the summary table.
+
+Usage
+-----
+    python scripts/figures/fig5.py
+    python scripts/figures/fig5.py --models iiLoss_finetune_0.0 iiLossRaw_finetune_0.2 \\
+        --labels control iiLossRaw --out figures/figureS6.png
 """
 
 import argparse
-import csv
 import glob
 import json
 import os
@@ -30,6 +38,7 @@ from collections import defaultdict
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.lines as mlines
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import TwoSlopeNorm
@@ -38,18 +47,26 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(HERE))
 
+from spectral import (HULLOUT_MAP, error_split, free_sizes, load_hull,
+                      product_counts, reaction_sums, residual)
+
 COL_REF = "#6B7280"
+COL_II  = "#E61D60"
 N_VALS  = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 CMAP    = "RdBu_r"
 NORM    = TwoSlopeNorm(vmin=0, vcenter=1.0, vmax=np.sqrt(10))
 
-_COL_W           = 6.69
-_FIG_W           = 11.0
-_PT_BODY, _PT_SM = 9.0, 7.5
-_FS    = round(_PT_BODY * _FIG_W / _COL_W)
-_FS_SM = round(_PT_SM   * _FIG_W / _COL_W)
-_FS_LEG, _FS_CB = _FS, _FS
-_FS_PANEL = 30
+# -- Figure style ---------------------------------------------------------
+# Two rows of three panels across the full page width (180 mm); fonts are
+# scaled so they print at 7 pt (body) and 6 pt (minor).
+_COL_W    = 7.09
+_FIG_W    = 15.0
+_FIG_H    = 12.6
+_FS       = round(7.0 * _FIG_W / _COL_W)
+_FS_SM    = round(6.0 * _FIG_W / _COL_W)
+_FS_N     = _FS_SM - 3            # the N labels on the arcs
+_FS_COUNT = _FS_SM - 2            # the counts under the bars
+_FS_PANEL = round(9.0 * _FIG_W / _COL_W)
 plt.rcParams.update({"font.family": "sans-serif", "font.size": _FS,
                      "axes.linewidth": 0.8})
 
@@ -59,73 +76,81 @@ CIRC_TOP  = 3.3
 HIST_DENS_MAX = 2.6
 HIST_H        = 1.1
 HIST_SCALE    = HIST_H / HIST_DENS_MAX
-FULL_H        = CIRC_TOP + HIST_H
 
 ARC_PHI = np.linspace(0, np.pi / 2, 300)
 
-DEFAULT_STEMS  = ["iiLoss_finetune_0.0", "iiLossRaw_finetune_0.2", "iiLoss_nested"]
-DEFAULT_LABELS = [r"control ($\lambda=0$)", r"iiLossRaw, preprint ($\lambda=0.2$)",
-                  r"iiLoss ($\lambda$ from validation)"]
+# Panel geometry, in inches: a pair of tied panels (a|b, d|e) and a single one
+# (c, f) per row, on a common grid.
+_SIDE   = 4.1             # panel width; panels a and b are square
+_TIE    = 0.18            # gap between tied panels
+_GAP    = 1.55            # gap before the single panel
+_LEFT   = 1.05
+_ROW1_Y = 6.55
+_ROW2_Y = 0.85
+_ROW2_H = 3.7
+_C_EXTRA = 0.42           # c reaches up to the xi histograms
+
+DEFAULT_STEMS  = ["iiLoss_finetune_0.0", "iiLoss_nested"]
+DEFAULT_LABELS = ["control", "iiLoss"]
+
+N_GROUPS = [(r"$1$", 1, 1), (r"$2$", 2, 2), (r"$3$", 3, 3), (r"$4$", 4, 4),
+            (r"$5$", 5, 5), (r"$\geq 6$", 6, None)]
+ROLE_GROUPS = [(r"$0$", 0, 0), (r"$1$–$2$", 1, 2), (r"$3$–$9$", 3, 9),
+               (r"$10$–$99$", 10, 99), (r"$\geq 100$", 100, None)]
 
 
-def _stem_of(name):
-    """Drop a trailing _s<seed> so all seeds of one run pool together."""
-    head, _, tail = name.rpartition("_s")
-    return head if head and tail.isdigit() else name
+# -- Data -----------------------------------------------------------------
 
-
-def load_distributions(csv_path, stems):
-    """Return {stem: {"per_N": {N: xi array}, "all": xi array}}."""
-    wanted = set(stems)
-    per_stem = {s: defaultdict(list) for s in stems}
-    every    = {s: [] for s in stems}
-    with open(csv_path, newline="") as f:
-        for row in csv.DictReader(f):
-            stem = _stem_of(row["model"])
-            if stem not in wanted:
-                continue
-            xi = float(row["xi_err"])
-            every[stem].append(xi)
-            N = int(row["N"])
-            if N in N_VALS:
-                per_stem[stem][N].append(xi)
-    data = {}
-    for s in stems:
-        if not every[s]:
+def load_runs(H, year, stem):
+    """Per seed: reaction sums y and norms |c|, and |delta| per compound."""
+    nc = H["ncomp"]
+    out = {}
+    for path in sorted(glob.glob(os.path.join(REPO_ROOT, "data", year, "ml", "Hf",
+                                              f"{stem}_s*", "ml_input.json"))):
+        name = os.path.basename(os.path.dirname(path))
+        head, _, seed = name.rpartition("_s")
+        if head != stem or not seed.isdigit():
             continue
-        data[s] = {"per_N": {N: np.array(v) for N, v in per_stem[s].items()},
-                   "all":   np.array(every[s])}
-    return data
+        with open(path) as f:
+            d, _ = residual(H, json.load(f))
+        y, q = reaction_sums(H, d)
+        out[int(seed)] = dict(y=y, r=np.sqrt(q), abs_f=np.abs(d[:nc]))
+    if not out:
+        raise SystemExit(f"no predictions for {stem} in data/{year}/ml/Hf")
+    return out
 
 
-def load_from_predictions(year, stems):
-    """The same distributions, computed from data/<year>/ml/Hf/<stem>_s*/."""
-    from spectral import HULLOUT_MAP, free_sizes, load_hull, reaction_sums, residual
-    H = load_hull(HULLOUT_MAP[year])
-    nfree = free_sizes(H)
-    data = {}
-    for stem in stems:
-        per_N, every = defaultdict(list), []
-        paths = sorted(glob.glob(os.path.join(REPO_ROOT, "data", year, "ml", "Hf",
-                                              f"{stem}_s*", "ml_input.json")))
-        for path in paths:
-            if _stem_of(os.path.basename(os.path.dirname(path))) != stem:
-                continue
-            with open(path) as f:
-                d, _ = residual(H, json.load(f))
-            y, q = reaction_sums(H, d)
-            m = (nfree >= 2) & (q > 0)
-            xi = np.abs(y[m]) / np.sqrt(q[m])
-            every.extend(xi)
-            for N in N_VALS:
-                per_N[N].extend(xi[nfree[m] == N])
-        if every:
-            data[stem] = {"per_N": {N: np.array(v) for N, v in per_N.items()},
-                          "all": np.array(every)}
-    return data
+def paired(control, model):
+    """The seeds both runs have, stacked into (seed, item) arrays."""
+    seeds = sorted(set(control) & set(model))
+    if not seeds:
+        raise SystemExit("the two runs share no seed")
+    def stack(runs, key):
+        return np.array([runs[s][key] for s in seeds])
+    return ({k: stack(control, k) for k in ("y", "r", "abs_f")},
+            {k: stack(model, k) for k in ("y", "r", "abs_f")})
 
+
+def xi_distribution(y, r, nfree):
+    """{"per_N": {N: xi}, "all": xi} pooled over seeds, as fig1.py expects."""
+    n = np.broadcast_to(nfree, y.shape)
+    m = (n >= 2) & (r > 0)
+    xi, n = np.abs(y[m]) / r[m], n[m]
+    per_N = defaultdict(list)
+    for N in N_VALS:
+        per_N[N] = xi[n == N]
+    return {"per_N": dict(per_N), "all": xi.ravel()}
+
+
+def group_masks(values, groups):
+    return [(label, (values >= lo) & ((values <= hi) if hi is not None else True))
+            for label, lo, hi in groups]
+
+
+# -- Panels ---------------------------------------------------------------
 
 def draw_panel(ax, entry):
+    """Draw one xi panel; returns the top of its histogram in axes units."""
     per_N    = entry["per_N"]
     all_xi   = entry["all"]
     cmap_obj = plt.get_cmap(CMAP)
@@ -141,7 +166,7 @@ def draw_panel(ax, entry):
                 color="lightgray", lw=1.0, zorder=0)
         ax.text(R * np.cos(0.24) + 0.01 - R * 0.003,
                 R * np.sin(0.24),
-                f"N={N}", color="gray", fontsize=_FS_SM + 1,
+                f"N={N}", color="gray", fontsize=_FS_N,
                 va="top", ha="left", rotation=-80)
 
     # Scatter coloured by xi
@@ -203,25 +228,97 @@ def draw_panel(ax, entry):
     ax.set_xlabel(r"$\xi = \sqrt{N}\cos\varphi$", fontsize=_FS)
     ax.set_ylabel(r"$\eta = \sqrt{N}\sin\varphi$", fontsize=_FS)
     ax.set_aspect("equal")
+    return 1 + counts.max() * HIST_SCALE / CIRC_TOP
 
 
-def build_figure(data, stems, labels):
-    """Assemble one panel per run, stacked, and return the figure."""
-    present = [s for s in stems if s in data]
-    if len(present) < 2:
-        raise SystemExit("Need two runs present in the scores file")
-    titles = [labels[stems.index(s)] for s in present]
-    n = len(present)
+def draw_error_distribution(ax, err_control, err_model, labels):
+    """Step histograms of dH_d,ML - dH_d,DFT, pooled over seeds."""
+    edges = np.arange(-0.6, 0.4001, 0.01)
+    x = np.repeat(edges, 2)[1:-1]
+    for err, label, control in ((err_control, labels[0], True), (err_model, labels[1], False)):
+        h, _ = np.histogram(err.ravel(), bins=edges, density=True)
+        y = np.repeat(h, 2)
+        if control:
+            ax.fill_between(x, y, color=COL_REF, alpha=0.30, lw=0, label=label)
+            ax.plot(x, y, color=COL_REF, lw=1.0)
+        else:
+            ax.fill_between(x, y, color=COL_II, alpha=0.12, lw=0)
+            ax.plot(x, y, color=COL_II, lw=1.8, label=label)
+    ax.axvline(0, color="black", lw=0.9, ls="--", zorder=1)
+    ax.set_xlim(edges[0], edges[-1])
+    ax.set_ylim(0, None)
+    ax.set_xlabel(r"$\Delta_\mathrm{d}H^\mathrm{ML}-\Delta_\mathrm{d}H^\mathrm{DFT}$"
+                  r" / eV atom$^{-1}$", fontsize=_FS)
+    ax.set_ylabel(r"$\rho\left(\Delta_\mathrm{d}H^\mathrm{ML}-\Delta_\mathrm{d}H^\mathrm{DFT}"
+                  r"\right)$ / atom eV$^{-1}$", fontsize=_FS)
+    ax.legend(loc="upper left", fontsize=_FS_SM, frameon=False)
 
-    fig, axes = plt.subplots(n, 1, figsize=(6.5, 6.5 * n))
-    fig.subplots_adjust(hspace=0.35)
 
-    for ax, stem in zip(axes, present):
-        draw_panel(ax, data[stem])
-    for ax in axes[:-1]:
-        ax.set_xlabel("")
-        ax.tick_params(labelbottom=False)
+def draw_bars(ax, x, values, masks=None, offset=0.0, width=0.7, hatch=None):
+    """Mean and sd over seeds of `values` (group x seed); counts below if masks."""
+    mean, sd = values.mean(axis=1), values.std(axis=1, ddof=1)
+    ax.bar(x + offset, mean, yerr=sd, width=width,
+           color=("white" if hatch else COL_II), edgecolor=COL_II, hatch=hatch,
+           lw=(1.0 if hatch else 0), alpha=(1.0 if hatch else 0.85),
+           capsize=2.5, error_kw=dict(elinewidth=0.9))
+    if masks is not None:
+        span = np.ptp(np.r_[mean - sd, mean + sd, 0.0])
+        for xi, (_, m), mu, s in zip(x, masks, mean, sd):
+            ax.text(xi + offset, min(mu, 0) - s - 0.025 * span,
+                    f"{int(m.sum()):,}".replace(",", " "),
+                    ha="center", va="top", fontsize=_FS_COUNT, color="0.35")
+    return mean - sd, mean + sd
 
+
+def bar_frame(ax, x, labels, lo, hi):
+    """Zero line, ticks and limits that leave room for the counts."""
+    span = max(hi, 0) - min(lo, 0)
+    ax.axhline(0, color="black", lw=0.9)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=_FS)
+    ax.set_ylim(min(lo, 0) - 0.16 * span, max(hi, 0) + 0.06 * span)
+    ax.grid(True, axis="y", lw=0.4, alpha=0.5)
+
+
+# -- Figure ---------------------------------------------------------------
+
+def build_figure(H, control, model, labels):
+    nfree = free_sizes(H)
+    n_masks = group_masks(nfree, N_GROUPS)
+    role_masks = group_masks(product_counts(H), ROLE_GROUPS)
+    xi_part, c_part = error_split(control["y"], control["r"], model["y"], model["r"])
+    abs_c, abs_m = np.abs(control["y"]), np.abs(model["y"])
+
+    def rel_change(numerator, m):
+        return 100 * numerator[:, m].mean(axis=1) / abs_c[:, m].mean(axis=1)
+
+    fig = plt.figure(figsize=(_FIG_W, _FIG_H))
+    def box(x, y, w, h):
+        return fig.add_axes([x / _FIG_W, y / _FIG_H, w / _FIG_W, h / _FIG_H])
+    x_pair = (_LEFT, _LEFT + _SIDE + _TIE)
+    x_single = _LEFT + 2 * _SIDE + _TIE + _GAP
+    h_c = _SIDE + _C_EXTRA
+    ax_a, ax_b = (box(x, _ROW1_Y, _SIDE, _SIDE) for x in x_pair)
+    ax_c = box(x_single, _ROW1_Y, _SIDE, h_c)
+    ax_d, ax_e = (box(x, _ROW2_Y, _SIDE, _ROW2_H) for x in x_pair)
+    ax_f = box(x_single, _ROW2_Y, _SIDE, _ROW2_H)
+
+    # (a, b) tied: one y axis, one colour bar and legend beneath the pair
+    hist_top = max(draw_panel(ax_a, xi_distribution(control["y"], control["r"], nfree)),
+                   draw_panel(ax_b, xi_distribution(model["y"], model["r"], nfree)))
+    ax_b.set_ylabel("")
+    ax_b.tick_params(labelleft=False)
+
+    pair_w = 2 * _SIDE + _TIE
+    cax = box(_LEFT + 0.08 * pair_w, _ROW1_Y - 1.2, 0.5 * pair_w, 0.13)
+    sm = plt.cm.ScalarMappable(cmap=CMAP, norm=NORM)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, cax=cax, orientation="horizontal")
+    cbar.set_ticks([0, 1, np.sqrt(10)])
+    cbar.set_ticklabels(["0", "1", r"$\sqrt{10}$"])
+    cbar.ax.tick_params(labelsize=_FS_SM)
+    cbar.ax.text(-0.03, 0.5, r"$\xi$", transform=cbar.ax.transAxes,
+                 ha="right", va="center", fontsize=_FS)
     leg_handles = [
         mlines.Line2D([], [], color="black", marker="D", markersize=5,
                       linestyle="None", label=r"$\xi_\mathrm{rms}(N)$"),
@@ -230,52 +327,75 @@ def build_figure(data, stems, labels):
         mlines.Line2D([], [], color="black", lw=1.2, ls="--",
                       label=r"$\xi_\mathrm{rms}$"),
     ]
-    # Legend and colour bar keep their size in inches as panels are added.
-    fig.legend(handles=leg_handles, loc="lower center", ncol=3,
-               fontsize=_FS_LEG, framealpha=0.9,
-               bbox_to_anchor=(0.5, 0.025 * 2 / n))
+    fig.legend(handles=leg_handles, loc="center left", fontsize=_FS_SM,
+               frameon=False, handlelength=1.6, labelspacing=0.25,
+               bbox_to_anchor=((_LEFT + 0.64 * pair_w) / _FIG_W,
+                               (_ROW1_Y - 1.25) / _FIG_H))
 
-    cbar_ax = fig.add_axes([0.15, -0.015 * 2 / n, 0.70, 0.012 * 2 / n])
-    sm = plt.cm.ScalarMappable(cmap=CMAP, norm=NORM)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label(r"$\xi$", fontsize=_FS_CB)
-    cbar.set_ticks([0, 1, np.sqrt(10)])
-    cbar.set_ticklabels(["0", "1", r"$\sqrt{10}$"])
+    # (c)
+    draw_error_distribution(ax_c, -control["y"], -model["y"], labels)
 
-    for ax, lbl, title in zip(axes, "abcdefgh", titles):
-        ax.text(-0.18, 1.15, lbl, transform=ax.transAxes,
-                fontsize=_FS_PANEL, fontweight="bold", va="bottom",
-                ha="left", clip_on=False)
-        ax.text(1.0, 1.15, title, transform=ax.transAxes, fontsize=_FS,
-                fontweight="bold", ha="right", va="bottom", clip_on=False)
+    # (d, e) tied: e splits each bar of d into its xi part and its |c| part
+    x = np.arange(len(n_masks))
+    total = np.array([rel_change(abs_m - abs_c, m) for _, m in n_masks])
+    lo_d, hi_d = draw_bars(ax_d, x, total, masks=n_masks)
+    lo_1, hi_1 = draw_bars(ax_e, x, np.array([rel_change(xi_part, m) for _, m in n_masks]),
+                           offset=-0.2, width=0.38)
+    lo_2, hi_2 = draw_bars(ax_e, x, np.array([rel_change(c_part, m) for _, m in n_masks]),
+                           offset=0.2, width=0.38, hatch="////")
+    lo = min(lo_d.min(), lo_1.min(), lo_2.min())
+    hi = max(hi_d.max(), hi_1.max(), hi_2.max())
+    for ax in (ax_d, ax_e):
+        bar_frame(ax, x, [g[0] for g in n_masks], lo, hi)
+        ax.set_xlabel(r"$N$", fontsize=_FS)
+    ax_d.set_ylabel(r"$\Delta\mathrm{MAE}(\Delta_\mathrm{d}H)$ / %", fontsize=_FS)
+    ax_e.tick_params(labelleft=False)
+    ax_e.legend(handles=[
+        mpatches.Patch(facecolor=COL_II, alpha=0.85, label=r"via $\xi$"),
+        mpatches.Patch(facecolor="white", edgecolor=COL_II, hatch="////",
+                       label=r"via $\Vert\mathbf{c}\Vert$")],
+        loc="lower left", fontsize=_FS_SM, frameon=False)
 
-    plt.tight_layout(rect=[0, 0.07 * 2 / n, 1, 1])
+    # (f)
+    x = np.arange(len(role_masks))
+    change_f = np.array([100 * (model["abs_f"][:, m].mean(axis=1)
+                                / control["abs_f"][:, m].mean(axis=1) - 1)
+                         for _, m in role_masks])
+    lo_f, hi_f = draw_bars(ax_f, x, change_f, masks=role_masks)
+    bar_frame(ax_f, x, [g[0] for g in role_masks], lo_f.min(), hi_f.max())
+    ax_f.set_xlabel("reactions as decomposition product", fontsize=_FS)
+    ax_f.set_ylabel(r"$\Delta\mathrm{MAE}(\Delta_\mathrm{f}H)$ / %", fontsize=_FS)
+
+    # Panel letters on one line per row, above the tallest xi histogram
+    top_row1 = max(h_c / _SIDE, hist_top)
+    for ax, letter, top in ((ax_a, "a", top_row1), (ax_b, "b", top_row1),
+                            (ax_c, "c", top_row1 * _SIDE / h_c), (ax_d, "d", 1.0),
+                            (ax_e, "e", 1.0), (ax_f, "f", 1.0)):
+        dx = -0.06 if letter in "be" else -0.24
+        ax.text(dx, top + 0.03, letter, transform=ax.transAxes,
+                fontsize=_FS_PANEL, fontweight="bold", va="bottom", ha="left",
+                clip_on=False)
+        ax.tick_params(labelsize=_FS_SM)
     return fig
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", default=None,
-                        help="per-compound scores file of interference_score.py; "
-                             "default: compute from the predictions of --year")
     parser.add_argument("--year", default="2025", choices=["2020", "2025", "2026"])
-    parser.add_argument("--models", nargs="+", default=DEFAULT_STEMS,
-                        help="run names without the _s<seed> suffix")
-    parser.add_argument("--labels", nargs="+", default=DEFAULT_LABELS,
-                        help="panel titles, one per run")
+    parser.add_argument("--models", nargs=2, default=DEFAULT_STEMS,
+                        help="control and model, run names without the _s<seed> suffix")
+    parser.add_argument("--labels", nargs=2, default=DEFAULT_LABELS,
+                        help="legend entries of panel c")
     parser.add_argument("--out", default=os.path.join(
         REPO_ROOT, "figures", "figure5.png"))
     args = parser.parse_args()
 
-    labels = args.labels
-    if len(labels) != len(args.models):
-        labels = list(args.models)
-
-    data = (load_distributions(args.csv, args.models) if args.csv
-            else load_from_predictions(args.year, args.models))
+    H = load_hull(HULLOUT_MAP[args.year])
+    control = load_runs(H, args.year, args.models[0])
+    model = load_runs(H, args.year, args.models[1])
+    control, model = paired(control, model)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    build_figure(data, args.models, labels)
+    build_figure(H, control, model, args.labels)
     plt.savefig(args.out, dpi=300, bbox_inches="tight")
     print(f"Saved >> {args.out}")
 

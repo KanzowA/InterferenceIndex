@@ -41,8 +41,8 @@ REPO_ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 sys.path.insert(0, REPO_ROOT)
 
-from spectral import (HULLOUT_MAP, free_sizes, gauge_split, load_hull,
-                      reaction_sums, residual)
+from spectral import (HULLOUT_MAP, error_split, free_sizes, gauge_split, load_hull,
+                      product_counts, reaction_sums, residual)
 
 RESULTS = os.path.join(REPO_ROOT, "results")
 ML_2025 = os.path.join(REPO_ROOT, "data", "2025", "ml", "Hf")
@@ -303,6 +303,95 @@ def section_crossvalidation():
             "-", f"{rel(df, stem, c, 'MAE_d'):+.1f}% / {rel(df, stem, c, 'MAE_f'):+.1f}%")
 
 
+def change(values):
+    """Relative change in % over seeds, as mean(sd in the last digit)."""
+    v = np.asarray(values, float)
+    return f"{v.mean():+.1f}({int(round(v.std(ddof=1) * 10))})%"
+
+
+def reaction_errors(H, stem, gauge=False):
+    """Per seed: y, |c| (gauge-fixed if asked) and |delta| of the compounds."""
+    Y, R, A = [], [], []
+    for path in sorted(glob.glob(os.path.join(ML_2025, f"{stem}_s*", "ml_input.json"))):
+        with open(path) as f:
+            d, _ = residual(H, json.load(f))
+        y, q = reaction_sums(H, d)
+        if gauge:
+            _, dq = gauge_split(H, d, np.ones(H["R"], bool))
+            _, q = reaction_sums(H, dq)
+        Y.append(y)
+        R.append(np.sqrt(q))
+        A.append(np.abs(d[:H["ncomp"]]))
+    return np.array(Y), np.array(R), np.array(A)
+
+
+def section_fig5():
+    print("\nFigure 5: error distribution, N, the xi / |c| split, compound roles")
+    H = load_hull(HULLOUT_MAP["2025"])
+    nfree, roles = free_sizes(H), product_counts(H)
+    c, ii = "iiLoss_finetune_0.0", "iiLoss_nested"
+    yc, rc, ac = reaction_errors(H, c)
+
+    # (c) the distribution of dH_d,ML - dH_d,DFT = -y, in eV/atom
+    for stem in (c, ii):
+        e = -reaction_errors(H, stem)[0]
+        q25, q75 = np.percentile(e, [25, 75], axis=1)
+        add(f"F5c_MAE_{stem}", "Fig. 5c caption", f"mean |error| of dH_d, {stem}", "-",
+            fmt(np.abs(e).mean(axis=1)))
+        add(f"F5c_median_{stem}", "Fig. 5c caption", f"median |error| of dH_d, {stem}", "-",
+            fmt(np.median(np.abs(e), axis=1)))
+        add(f"F5c_bias_{stem}", "Fig. 5c caption", f"mean signed error of dH_d, {stem}", "-",
+            fmt(e.mean(axis=1)))
+        add(f"F5c_sd_{stem}", "Fig. 5c caption", f"sd of the dH_d error, {stem}", "-",
+            fmt(e.std(axis=1)))
+        add(f"F5c_IQR_{stem}", "Fig. 5c caption", f"interquartile range of the dH_d error, {stem}",
+            "-", fmt(q75 - q25))
+
+    # (d, e) per N, and the split of the change into its xi and |c| parts
+    groups = [("1", nfree == 1), ("2", nfree == 2), ("3", nfree == 3), ("4", nfree == 4),
+              ("5", nfree == 5), (">=6", nfree >= 6), ("all", nfree >= 1)]
+    runs = (("", ii, False), ("Q_", ii, True), ("", "HdLoss_nested", False),
+            ("", "iiLossRaw_nested", False), ("", "iiLossRaw_finetune_0.2", False))
+    for tag, stem, gauge in runs:
+        y0, r0, _ = reaction_errors(H, c, gauge) if gauge else (yc, rc, ac)
+        y1, r1, _ = reaction_errors(H, stem, gauge)
+        xi_part, c_part = error_split(y0, r0, y1, r1)
+        mae0 = np.abs(y0)
+        where = "Fig. 5d,e" if stem == ii and not gauge else "SI (error split)"
+        for name, m in groups:
+            if stem != ii and name != "all":
+                continue
+            base = mae0[:, m].mean(axis=1)
+            label = f"N {name} ({int(m.sum())} reactions), {stem}"
+            if not gauge:
+                add(f"F5d_{name}_{stem}", where, f"change in MAE(dH_d), {label}", "-",
+                    change(100 * (np.abs(y1)[:, m].mean(axis=1) / base - 1)))
+            kind = "gauge-fixed " if gauge else ""
+            add(f"F5e_{tag}xi_{name}_{stem}", where, f"{kind}xi part of it, {label}", "-",
+                change(100 * xi_part[:, m].mean(axis=1) / base))
+            add(f"F5e_{tag}c_{name}_{stem}", where, f"{kind}|c| part of it, {label}", "-",
+                change(100 * c_part[:, m].mean(axis=1) / base))
+
+    # (f) MAE(dH_f) by the number of reactions a compound enters as a product
+    stable = H["hd"][:H["ncomp"]] <= 0
+    groups = [("0", "product in 0 reactions", roles == 0),
+              ("1-2", "product in 1-2 reactions", (roles >= 1) & (roles <= 2)),
+              ("3-9", "product in 3-9 reactions", (roles >= 3) & (roles <= 9)),
+              ("10-99", "product in 10-99 reactions", (roles >= 10) & (roles <= 99)),
+              (">=100", "product in >=100 reactions", roles >= 100),
+              ("stable", "on the hull (dH_d <= 0)", stable),
+              ("unstable", "above the hull", ~stable),
+              ("all", "all compounds", roles >= 0)]
+    for stem in (ii, "HdLoss_nested", "iiLossRaw_nested", "iiLossRaw_finetune_0.2"):
+        a1 = reaction_errors(H, stem)[2]
+        for name, text, m in groups:
+            if stem != ii and name not in ("0", ">=100", "all"):
+                continue
+            add(f"F5f_{name}_{stem}", "Fig. 5f" if stem == ii else "SI (error split)",
+                f"change in MAE(dH_f), {text} ({int(m.sum())}), {stem}",
+                "-", change(100 * (a1[:, m].mean(axis=1) / ac[:, m].mean(axis=1) - 1)))
+
+
 def section_selection():
     print("\nlam selection")
     logs = load_logs("selection*.json")
@@ -398,6 +487,7 @@ def main():
     section_data()
     section_table1()
     section_crossvalidation()
+    section_fig5()
     section_selection()
     section_capacity()
     section_prospective()

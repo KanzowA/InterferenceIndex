@@ -6,8 +6,11 @@
 Read from the selection logs of the nested runs (results/2025/nested/), so no
 number in this figure has seen a test compound. Each point is the change against
 the lam = 0 control of the same seed and fold, averaged over the 25 seed-folds
-at base width 1024; error bars are the sample standard deviation. The objective
-of the preprint, iiLossRaw, is drawn in the colour of iiLoss with open markers.
+at base width 1024; error bars are the sample standard deviation.
+
+The main-text figure shows iiLoss and HdLoss. With --objectives iiLoss iiLossRaw
+HdLoss it adds the preprint's objective, in the colour of iiLoss with open
+markers (Figure S5).
 """
 
 import argparse
@@ -87,14 +90,14 @@ def series_points(logs, key, index):
 
 
 # -- Figure ---------------------------------------------------------------
-def build_figure(logs):
+def build_figure(logs, objectives):
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.2),
                              gridspec_kw=dict(wspace=0.38))
     grid = logs[0]["grid"]
 
     for ax, (index, ylabel) in zip(axes[:2], METRICS):
         for label, cfg in SERIES.items():
-            if cfg["key"] not in logs[0]["objectives"]:
+            if cfg["key"] not in objectives:
                 continue
             points = series_points(logs, cfg["key"], index)
             filled = cfg["fill"]
@@ -120,7 +123,7 @@ def build_figure(logs):
     # (c) the lam the criterion chose, per objective
     ax = axes[2]
     present = [(label, cfg) for label, cfg in SERIES.items()
-               if cfg["key"] in logs[0]["objectives"]]
+               if cfg["key"] in objectives]
     width = 0.8 / len(present)
     for i, (label, cfg) in enumerate(present):
         count = Counter(log["selected"][cfg["key"]] for log in logs)
@@ -155,12 +158,18 @@ def main():
     parser.add_argument("--logs", default=os.path.join(
         REPO_ROOT, "results", "2025", "nested"))
     parser.add_argument("--width", type=int, default=1024)
+    parser.add_argument("--objectives", nargs="+", default=["iiLoss", "HdLoss"],
+                        choices=[cfg["key"] for cfg in SERIES.values()])
     parser.add_argument("--out", default=os.path.join(
         REPO_ROOT, "figures", "figure4.png"))
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    build_figure(load_logs(args.logs, args.width))
+    logs = load_logs(args.logs, args.width)
+    missing = set(args.objectives) - set(logs[0]["objectives"])
+    if missing:
+        raise SystemExit(f"no selection runs for {sorted(missing)} at width {args.width}")
+    build_figure(logs, args.objectives)
     plt.savefig(args.out, dpi=300, bbox_inches="tight")
     print(f"Saved >> {args.out}")
 

@@ -54,7 +54,7 @@ FIGURES = [
     ("4", "Lambda on the validation split, and the lambda it selects",
      "scripts/figures/fig4.py", [], [SELECTION]),
 
-    ("5", "Interference index before and after training",
+    ("5", "What interference-aware training changes, reaction by reaction",
      "scripts/figures/fig5.py", [], [PREDS_2025]),
 
     ("S1", "Convergence of the fine-tuning stage - iiLoss",
@@ -68,6 +68,17 @@ FIGURES = [
 
     ("S4", "Interference diagnostic for the Matbench Discovery models",
      "scripts/figures/figS4.py", [], [MLIP]),
+
+    ("S5", "Lambda on the validation split, with the preprint's objective",
+     "scripts/figures/fig4.py",
+     ["--objectives", "iiLoss", "iiLossRaw", "HdLoss",
+      "--out", "figures/figureS5.png"], [SELECTION]),
+
+    ("S6", "Figure 5 for the preprint's objective",
+     "scripts/figures/fig5.py",
+     ["--models", "iiLoss_finetune_0.0", "iiLossRaw_finetune_0.2",
+      "--labels", "control", "iiLossRaw",
+      "--out", "figures/figureS6.png"], [PREDS_2025]),
 ]
 
 
