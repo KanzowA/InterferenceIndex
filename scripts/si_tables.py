@@ -26,6 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
 
 # -- Table contents -------------------------------------------------------
+NUMBER_WORDS = {3: "three", 5: "five"}
+
 VARIANTS = [
     ("iiLoss_finetune_", "iiLoss"),
     ("HdLoss_finetune_", "HdLoss"),
@@ -143,15 +145,20 @@ def rows_table(groups, rows, metrics, decimals, caption, tag, first_col):
 
 
 def section_eps(groups, metrics, decimals):
+    # The preprint's runs (2026) and the revision's (2025) checked different
+    # values; rows absent from the dataset are skipped.
     rows = [(r"$10^{-3}$", "iiLoss_finetune_eps1e-3_0.2"),
+            (r"$10^{-3}$", "iiLoss_finetune_eps0.001_0.2"),
             (r"$10^{-4}$", "iiLoss_finetune_0.2"),
+            (r"$10^{-5}$", "iiLoss_finetune_eps1e-05_0.2"),
             (r"$10^{-6}$", "iiLoss_finetune_eps1e-6_0.2")]
+    seeds = len(groups.get("iiLoss_finetune_0.2", []))
     caption = (r"Sensitivity of \textit{iiLoss} at $\lambda = 0.2$ to the "
                r"denominator stabiliser $\epsilon$, in eV$^2$\,atom$^{-2}$. "
                r"The value $10^{-4}$ used throughout was fixed a priori. "
-               r"Values are means over three random seeds, with the "
-               r"parenthesised digits giving the sample standard deviation in "
-               r"units of the last quoted digit.")
+               rf"Values are means over {NUMBER_WORDS.get(seeds, seeds)} random seeds, "
+               r"with the parenthesised digits giving the sample standard "
+               r"deviation in units of the last quoted digit.")
     return rows_table(groups, rows, metrics, decimals, caption, "eps",
                       r"$\epsilon$")
 

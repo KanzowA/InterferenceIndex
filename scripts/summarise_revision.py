@@ -145,22 +145,25 @@ def section_selection():
 def section_capacity(df):
     out = []
     widths = sorted({int(w[2:]) for w in df.stem.str.extract(r"(_w\d+)$")[0].dropna()})
-    seeds_small = sorted(int(s) for s in df[df.stem.str.endswith(f"_w{widths[0]}")].seed.unique()) if widths else []
+    smallest = df[df.stem.str.endswith(f"_w{widths[0]}")] if widths else df.iloc[:0]
+    seeds_small = sorted(int(s) for s in smallest.seed.unique())
     print(f"\nCapacity ladder (seeds {seeds_small}; width 1024 is the nested run, same seeds)")
     for width in widths + [1024]:
         tag = "" if width == 1024 else f"_w{width}"
         sub = df[df.seed.isin(seeds_small)] if width == 1024 else df
         c = sub[sub.stem == CONTROL + tag]
-        print(f"  width {width:5d}  control: MAE_f {c.MAE_f.mean():.4f}  MAE_d {c.MAE_d.mean():.4f}  "
-              f"xi_rms {c.xi_rms.mean():.3f}  F1 {c.F1.mean():.4f}")
-        for run in ("iiLoss_nested", "iiLoss_finetune_0.2", "HdLoss_nested", "HdLoss_finetune_0.1"):
+        print(f"  width {width:5d}  control: MAE_f {c.MAE_f.mean():.4f}  "
+              f"MAE_d {c.MAE_d.mean():.4f}  xi_rms {c.xi_rms.mean():.3f}  F1 {c.F1.mean():.4f}")
+        runs = ("iiLoss_nested", "iiLoss_finetune_0.2", "HdLoss_nested", "HdLoss_finetune_0.1")
+        for run in runs:
             rows = paired(sub, run + tag, CONTROL + tag,
                           ["MAE_f", "MAE_d", "F1", "maxF1", "ROC_AUC", "PR_AUC"])
             for r in rows:
                 r["width"] = width
             out += rows
-            print(f"    {run:22s} " + " | ".join(
-                f"{r['metric']} {r['rel_pct']:+5.1f}% {int(r['n_better'])}/{r['n']}" for r in rows))
+            cells = [f"{r['metric']} {r['rel_pct']:+5.1f}% {int(r['n_better'])}/{r['n']}"
+                     for r in rows]
+            print(f"    {run:22s} " + " | ".join(cells))
     return out
 
 
@@ -183,7 +186,8 @@ def main():
                         choices=["all", "nested", "head", "eps", "selection",
                                  "capacity", "prospective"])
     args = parser.parse_args()
-    want = lambda s: args.section in ("all", s)
+    def want(section):
+        return args.section in ("all", section)
 
     spectral = os.path.join(RESULTS_2025, "spectral_summary_2025.csv")
     if any(want(s) for s in ("nested", "head", "eps", "capacity")):

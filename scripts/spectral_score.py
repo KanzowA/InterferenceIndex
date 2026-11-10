@@ -95,7 +95,9 @@ class MLHull:
         hd = self._run(hf)[self.ok]
         truth = self.truth_hd[self.ok] <= 0
         pos = hd <= 0
-        tp = (pos & truth).sum(); fp = (pos & ~truth).sum(); fn = (~pos & truth).sum()
+        tp = (pos & truth).sum()
+        fp = (pos & ~truth).sum()
+        fn = (~pos & truth).sum()
         prec = tp / max(tp + fp, 1)
         rec = tp / max(tp + fn, 1)
         return dict(mlhull_F1=2 * prec * rec / max(prec + rec, 1e-12),

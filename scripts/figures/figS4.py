@@ -62,6 +62,7 @@ NAMED = {"mace-mp-0": ("MACE-MP-0", (-6, -22), "right"),
          "dpa-3.1-mptrj": ("DPA-3.1", (-8, -20), "right")}
 
 MAE_TICKS = [0.02, 0.05, 0.1]
+RATIO_LABEL = r"$\mathrm{MAE}(\Delta_\mathrm{d}H)\,/\,\mathrm{MAE}(\Delta_\mathrm{f}H)$"
 MAE_LIM = (0.014, 0.16)
 
 
@@ -70,8 +71,9 @@ def scatter(ax, df, x, y, interval=None):
     for group, cfg in GROUPS.items():
         sub = df[df.group == group]
         if interval is not None:
-            ax.errorbar(sub[x], sub[y], yerr=[sub[y] - sub[interval[0]], sub[interval[1]] - sub[y]],
-                        fmt="none", ecolor=cfg["color"], elinewidth=0.8, alpha=0.6, zorder=2)
+            yerr = [sub[y] - sub[interval[0]], sub[interval[1]] - sub[y]]
+            ax.errorbar(sub[x], sub[y], yerr=yerr, fmt="none", ecolor=cfg["color"],
+                        elinewidth=0.8, alpha=0.6, zorder=2)
         ax.scatter(sub[x], sub[y], s=40, marker=cfg["marker"],
                    facecolor=cfg["color"] if cfg["fill"] else "white",
                    edgecolor="white" if cfg["fill"] else cfg["color"],
@@ -105,7 +107,7 @@ def build_figure(df):
     ax = axes[1]
     scatter(ax, df, "MAE_f", "ratio")
     mae_axis(ax)
-    ax.set_ylabel(r"$\mathrm{MAE}(\Delta_\mathrm{d}H)\,/\,\mathrm{MAE}(\Delta_\mathrm{f}H)$", fontsize=_FS)
+    ax.set_ylabel(RATIO_LABEL, fontsize=_FS)
     for key, (text, offset, ha) in NAMED.items():
         row = df[df.model == key]
         if len(row):
@@ -117,7 +119,7 @@ def build_figure(df):
     scatter(ax, df[df.group != "pre-MLIP"], "Xi2_Q", "ratio")
     ax.axvline(1.0, color=_COL_REF, ls=":", lw=0.9, alpha=0.6, zorder=1)
     ax.set_xlabel(r"gauge-fixed index $\Xi^2_Q$", fontsize=_FS)
-    ax.set_ylabel(r"$\mathrm{MAE}(\Delta_\mathrm{d}H)\,/\,\mathrm{MAE}(\Delta_\mathrm{f}H)$", fontsize=_FS)
+    ax.set_ylabel(RATIO_LABEL, fontsize=_FS)
 
     for i, ax in enumerate(axes):
         ax.grid(True, which="major", lw=0.4, alpha=0.5)

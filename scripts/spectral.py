@@ -142,13 +142,18 @@ def load_hull(path):
     rows, cols, vals, rc, hd = [], [], [], [], []
     for f, parts in parsed:
         r = len(rc)
-        rows.append(r); cols.append(idx[f]); vals.append(-1.0)
+        rows.append(r)
+        cols.append(idx[f])
+        vals.append(-1.0)
         for prod, amt in parts:
             w = amt if per_atom else amt * num_atoms(prod) / num_atoms(f)
             col = (eidx[re.findall(r"[A-Z][a-z]?", prod)[0]] if is_element(prod)
                    else idx[prod])
-            rows.append(r); cols.append(col); vals.append(w)
-        rc.append(idx[f]); hd.append(hull[f]["Hd"])
+            rows.append(r)
+            cols.append(col)
+            vals.append(w)
+        rc.append(idx[f])
+        hd.append(hull[f]["Hd"])
 
     M = len(comps) + len(elements)
     X = np.zeros((M, len(elements)))
@@ -181,8 +186,10 @@ def residual(H, pred):
 def reaction_sums(H, d):
     """(S delta)_j and sum_k (S_jk delta_k)^2 for every reaction."""
     rows, cols, vals = H["rows"], H["cols"], H["vals"]
-    y = np.zeros(H["R"]); np.add.at(y, rows, vals * d[cols])
-    q = np.zeros(H["R"]); np.add.at(q, rows, (vals * d[cols]) ** 2)
+    y = np.zeros(H["R"])
+    np.add.at(y, rows, vals * d[cols])
+    q = np.zeros(H["R"])
+    np.add.at(q, rows, (vals * d[cols]) ** 2)
     return y, q
 
 
@@ -224,8 +231,10 @@ def gauge_split(H, d, rows_ok, rcond=1e-10):
 # -- Scores ---------------------------------------------------------------
 
 def classification(pred_stable, truth):
-    tp = int((pred_stable & truth).sum()); fp = int((pred_stable & ~truth).sum())
-    fn = int((~pred_stable & truth).sum()); tn = int((~pred_stable & ~truth).sum())
+    tp = int((pred_stable & truth).sum())
+    fp = int((pred_stable & ~truth).sum())
+    fn = int((~pred_stable & truth).sum())
+    tn = int((~pred_stable & ~truth).sum())
     prec = tp / max(tp + fp, 1)
     rec = tp / max(tp + fn, 1)
     f1 = 2 * prec * rec / max(prec + rec, 1e-12)
@@ -239,8 +248,11 @@ def threshold_free(score, truth):
     """max-F1, ROC-AUC and PR-AUC, ranking compounds by predicted dH_d."""
     o = np.argsort(score)
     t = truth[o]
-    tp = np.cumsum(t); fp = np.cumsum(~t); npos = t.sum()
-    prec = tp / (tp + fp); rec = tp / npos
+    tp = np.cumsum(t)
+    fp = np.cumsum(~t)
+    npos = t.sum()
+    prec = tp / (tp + fp)
+    rec = tp / npos
     f1 = 2 * prec * rec / np.maximum(prec + rec, 1e-12)
     trapz = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
     roc = trapz(np.r_[0, tp / npos], np.r_[0, fp / (~t).sum()])

@@ -67,8 +67,10 @@ def discovery_metrics(ref, pred_eform, subsets):
         t, q = each_true[m], each_pred[m]
         apos = t <= 0
         mpos = (q <= 0) & q.notna()
-        tp = int((apos & mpos).sum()); fp = int((~apos & mpos).sum())
-        fn = int((apos & ~mpos).sum()); tn = int((~apos & ~mpos).sum())
+        tp = int((apos & mpos).sum())
+        fp = int((~apos & mpos).sum())
+        fn = int((apos & ~mpos).sum())
+        tn = int((~apos & ~mpos).sum())
         prev = (tp + fn) / len(t)
         prec = tp / (tp + fp) if tp + fp else np.nan
         rec = tp / (tp + fn)
@@ -100,7 +102,8 @@ def ranking_metrics(ref, pred_eform, subsets):
         tr, pr = true[m].to_numpy(), pred[m].to_numpy()
         score = np.where(np.isfinite(pr), -pr, -np.inf)
         t = (tr <= 0)[np.argsort(-score)]
-        tp = np.cumsum(t); fp = np.cumsum(~t)
+        tp = np.cumsum(t)
+        fp = np.cumsum(~t)
         out[f"{name}_ROC_AUC"] = float(trapz(np.r_[0, tp / t.sum()], np.r_[0, fp / (~t).sum()]))
         out[f"{name}_PR_AUC"] = float((tp / (tp + fp))[t].sum() / t.sum())
     return out
@@ -188,7 +191,8 @@ def main():
         row["closed_novel_MAE_d"] = float(np.abs(y[rows_novel]).mean())
         rows.append(row)
         print(f"  {run:30s} MAE_f {row['MAE_f_wbm']:.4f}  uniq F1 {row['uniq_F1']:.4f}  "
-              f"uniq DAF {row['uniq_DAF']:.3f}  closed MAE_d {row['closed_MAE_d']:.4f}", flush=True)
+              f"uniq DAF {row['uniq_DAF']:.3f}  closed MAE_d {row['closed_MAE_d']:.4f}",
+              flush=True)
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     pd.DataFrame(rows).to_csv(args.out, index=False, float_format="%.6g")

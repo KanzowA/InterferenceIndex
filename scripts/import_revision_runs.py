@@ -72,7 +72,8 @@ def convert_selection(log, width):
             val[f"{OBJECTIVE[obj]}_{lam}"] = value
     out = {k: v for k, v in log.items() if k not in ("val", "selected", "selected_by_F1", "arms")}
     out["width"] = width                  # absent from the logs of the 1024 run
-    out["objectives"] = [OBJECTIVE[a] for a in log.get("arms", ["iiloss", "hdloss", "iiperpfrozen"])]
+    arms = log.get("arms", ["iiloss", "hdloss", "iiperpfrozen"])
+    out["objectives"] = [OBJECTIVE[a] for a in arms]
     out["val"] = val
     out["selected"] = {OBJECTIVE[k]: v for k, v in log["selected"].items()}
     out["selected_by_F1"] = {OBJECTIVE[k]: v for k, v in log["selected_by_F1"].items()}

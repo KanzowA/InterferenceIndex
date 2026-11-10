@@ -82,6 +82,15 @@ def rel(df, run, control, col):
     return float((100 * (a[common] / c[common] - 1)).mean())
 
 
+def load_logs(pattern):
+    """Selection logs of the nested runs."""
+    logs = []
+    for path in sorted(glob.glob(os.path.join(RESULTS, "2025", "nested", pattern))):
+        with open(path) as f:
+            logs.append(json.load(f))
+    return logs
+
+
 def split_seed(df):
     parts = df["model"].str.extract(r"^(.*)_s(\d+)$")
     return df.assign(stem=parts[0], seed=parts[1].astype(int))
@@ -99,7 +108,7 @@ def section_data():
         f"{int((nfree >= 2).sum()):,}".replace(",", " "))
     add("frac_stable", "Results, false positives", "fraction stable (dH_d <= 0)", "33.8%",
         pct(H["hd"] <= 0))
-    logs = [json.load(open(p)) for p in glob.glob(os.path.join(RESULTS, "2025", "nested", "selection_s*.json"))]
+    logs = load_logs("selection_s*.json")
     add("n_train_fold", "Sec. iiLoss", "training compounds per outer fold", "81 193",
         str(sorted({log["n_train"] for log in logs})))
     add("n_test_fold", "Sec. iiLoss", "test compounds per outer fold", "20 298",
@@ -127,15 +136,17 @@ def section_data():
     fracs = []
     for train, _ in KFold(n_splits=5, shuffle=True, random_state=10).split(features):
         a, b, fr = coverage(data, labels, train)
-        n_with += a; n_kept += b; fracs += fr
+        n_with += a
+        n_kept += b
+        fracs += fr
     add("train_rxn_retained", "Sec. iiLoss", "training reactions retained", "92.6%",
         pct(n_kept / n_with), "reaction_coverage.py; reproduces 92.6 % on the 2026 file")
     add("train_rxn_complete", "Sec. iiLoss", "retained reactions with every product kept", "60.5%",
         pct(np.array(fracs) == 1.0))
-    add("train_rxn_kept_products", "Sec. iiLoss", "products kept, mean over retained reactions", "83.4%",
-        pct(fracs), "complete reactions count 1")
-    add("train_rxn_kept_incomplete", "new (wording)", "products kept, incomplete reactions only", "-",
-        pct([f for f in fracs if f < 1.0]))
+    add("train_rxn_kept_products", "Sec. iiLoss", "products kept, mean over retained reactions",
+        "83.4%", pct(fracs), "complete reactions count 1")
+    add("train_rxn_kept_incomplete", "new (wording)", "products kept, incomplete reactions only",
+        "-", pct([f for f in fracs if f < 1.0]))
 
 
 def section_table1():
@@ -160,12 +171,16 @@ def gauge_extras(H):
     rows, cols, vals = H["rows"], H["cols"], H["vals"]
     # The preprint's definition (eq. 18): compounds only, W from N >= 2 rows.
     m2 = (nfree >= 2)[rows]
-    w = np.zeros(H["M"]); np.add.at(w, cols[m2], vals[m2] ** 2); w = w[:nc]
-    keep = np.flatnonzero(w > 0); sw = np.sqrt(w[keep])
+    w = np.zeros(H["M"])
+    np.add.at(w, cols[m2], vals[m2] ** 2)
+    w = w[:nc]
+    keep = np.flatnonzero(w > 0)
+    sw = np.sqrt(w[keep])
     Q, sv, _ = np.linalg.svd(sw[:, None] * H["X"][:nc][keep], full_matrices=False)
     Q = Q[:, sv > 1e-10 * sv.max()]
     out = {}
-    for stem in ("iiLoss_finetune_0.0", "iiLossRaw_finetune_0.2", "iiLoss_nested", "HdLoss_nested"):
+    stems = ("iiLoss_finetune_0.0", "iiLossRaw_finetune_0.2", "iiLoss_nested", "HdLoss_nested")
+    for stem in stems:
         acc = {"share18": [], "rem18": [], "xi_lt1_Q": []}
         for path in sorted(glob.glob(os.path.join(ML_2025, f"{stem}_s*", "ml_input.json"))):
             with open(path) as f:
@@ -175,10 +190,13 @@ def gauge_extras(H):
             _, dq = gauge_split(H, d, np.ones(H["R"], bool))
             _, qq = reaction_sums(H, dq)
             acc["xi_lt1_Q"].append(np.mean(y[m] ** 2 / qq[m] < 1))
-            u = d[keep] * sw; a = Q.T @ u
+            u = d[keep] * sw
+            a = Q.T @ u
             acc["share18"].append(a @ a / (u @ u))
-            dp = d.copy(); dp[keep] = d[keep] - (Q @ a) / sw       # elements stay at 0
-            yp, qp = reaction_sums(H, dp); mp = (nfree >= 2) & (qp > 0)
+            dp = d.copy()
+            dp[keep] = d[keep] - (Q @ a) / sw       # elements stay at 0
+            yp, qp = reaction_sums(H, dp)
+            mp = (nfree >= 2) & (qp > 0)
             acc["rem18"].append(np.sqrt(np.mean(yp[mp] ** 2 / qp[mp])))
         out[stem] = acc
     return out
@@ -189,18 +207,24 @@ def section_crossvalidation():
     df = split_seed(pd.read_csv(os.path.join(RESULTS, "2025", "spectral_summary_2025.csv")))
     c, raw, hd, ii = ("iiLoss_finetune_0.0", "iiLossRaw_finetune_0.2", "HdLoss_finetune_0.1",
                       "iiLoss_nested")
-    col = lambda stem, k: seeds_of(df, stem)[k].to_numpy()
+    def col(stem, k):
+        return seeds_of(df, stem)[k].to_numpy()
 
-    preprint = {"MAE_f": ("0.097(1)", "0.195(2)", "0.101(1)"), "MAE_d": ("0.131(2)", "0.104(1)", "0.111(1)"),
+    # control, iiLossRaw at lam = 0.2, HdLoss at lam = 0.1
+    preprint = {"MAE_f":     ("0.097(1)", "0.195(2)", "0.101(1)"),
+                "MAE_d":     ("0.131(2)", "0.104(1)", "0.111(1)"),
                 "precision": ("0.389(2)", "0.492(5)", "0.449(5)"),
-                "recall": ("0.800(5)", "0.647(13)", "0.643(10)"),
-                "F1": ("0.523(1)", "0.559(2)", "0.529(1)"), "xi_rms": ("1.107(2)", "0.561(3)", "0.974(5)")}
+                "recall":    ("0.800(5)", "0.647(13)", "0.643(10)"),
+                "F1":        ("0.523(1)", "0.559(2)", "0.529(1)"),
+                "xi_rms":    ("1.107(2)", "0.561(3)", "0.974(5)")}
+    labels = ("control", "iiLossRaw l=0.2", "HdLoss l=0.1")
     for k, olds in preprint.items():
-        for stem, label, old in zip((c, raw, hd), ("control", "iiLossRaw l=0.2", "HdLoss l=0.1"), olds):
+        for stem, label, old in zip((c, raw, hd), labels, olds):
             add(f"T2_{k}_{stem}", "Tab. 2", f"{k}, {label}", old, fmt(col(stem, k)))
     for stem in ("iiLoss_nested", "iiLossRaw_nested", "HdLoss_nested"):
-        for k in ("MAE_f", "MAE_d", "precision", "recall", "F1", "maxF1", "ROC_AUC", "PR_AUC", "MCC",
-                  "xi_rms", "Xi2_Q", "mlhull_F1", "mlhull_DAF", "mlhull_MAE_hd"):
+        for k in ("MAE_f", "MAE_d", "precision", "recall", "F1", "maxF1", "ROC_AUC",
+                  "PR_AUC", "MCC", "xi_rms", "Xi2_Q", "mlhull_F1", "mlhull_DAF",
+                  "mlhull_MAE_hd"):
             add(f"T2new_{k}_{stem}", "new Tab. 2", f"{k}, {stem}", "-", fmt(col(stem, k)))
     for k in ("mlhull_F1", "mlhull_precision", "mlhull_recall", "mlhull_DAF", "mlhull_MAE_hd"):
         add(f"T2new_{k}_control", "new Tab. 2", f"{k}, control", "-", fmt(col(c, k)))
@@ -209,8 +233,10 @@ def section_crossvalidation():
         f"{rel(df, raw, c, 'MAE_d'):+.1f}%")
     add("abs_dF1_raw", "Abstract; Results", "iiLossRaw l=0.2: change in F1", "+6.8%",
         f"{rel(df, raw, c, 'F1'):+.1f}%")
-    add("dMAE_d_hdloss", "Results", "HdLoss l=0.1: change in MAE(dH_d)", "-15%", f"{rel(df, hd, c, 'MAE_d'):+.1f}%")
-    add("dF1_hdloss", "Results", "HdLoss l=0.1: change in F1", "+1.1%", f"{rel(df, hd, c, 'F1'):+.1f}%")
+    add("dMAE_d_hdloss", "Results", "HdLoss l=0.1: change in MAE(dH_d)", "-15%",
+        f"{rel(df, hd, c, 'MAE_d'):+.1f}%")
+    add("dF1_hdloss", "Results", "HdLoss l=0.1: change in F1", "+1.1%",
+        f"{rel(df, hd, c, 'F1'):+.1f}%")
     for stem, old in ((c, "1.35"), (raw, "0.53"), (ii, "-")):
         add(f"ratio_{stem}", "Conclusions", f"MAE(dH_d)/MAE(dH_f), {stem}", old,
             f"{col(stem, 'MAE_d').mean() / col(stem, 'MAE_f').mean():.2f}")
@@ -230,48 +256,56 @@ def section_crossvalidation():
     for stem in extra:
         add(f"xi_lt1_Q_{stem}", "new", f"reactions with gauge-fixed xi < 1, {stem}", "-",
             pct(extra[stem]["xi_lt1_Q"]))
-    add("share18_control", "SI Tab. gauge", "gauge share (eq. 18), control", "4.5%", pct(extra[c]["share18"]))
+    add("share18_control", "SI Tab. gauge", "gauge share (eq. 18), control", "4.5%",
+        pct(extra[c]["share18"]))
     add("share18_raw", "Results; SI Tab. gauge", "gauge share (eq. 18), iiLossRaw l=0.2", "54.8%",
         pct(extra[raw]["share18"]))
-    add("share18_iiLoss", "new", "gauge share (eq. 18), iiLoss nested", "-", pct(extra[ii]["share18"]))
+    add("share18_iiLoss", "new", "gauge share (eq. 18), iiLoss nested", "-",
+        pct(extra[ii]["share18"]))
     for stem in (c, raw, ii):
-        add(f"p_gauge_{stem}", "new (Xi2_Q convention)", f"p_gauge, {stem}", "-", pct(col(stem, "p_gauge")))
+        add(f"p_gauge_{stem}", "new (Xi2_Q convention)", f"p_gauge, {stem}", "-",
+            pct(col(stem, "p_gauge")))
     add("rem18_control", "SI Tab. gauge", "xi_rms of the remainder (eq. 18), control", "1.150(2)",
         fmt(extra[c]["rem18"]))
-    add("rem18_raw", "SI Tab. gauge", "xi_rms of the remainder (eq. 18), iiLossRaw l=0.2", "0.949(8)",
-        fmt(extra[raw]["rem18"]))
-    add("xi_red_raw", "Results", "iiLossRaw: reduction of xi_rms", "49%", f"{-rel(df, raw, c, 'xi_rms'):.0f}%")
+    add("rem18_raw", "SI Tab. gauge", "xi_rms of the remainder (eq. 18), iiLossRaw l=0.2",
+        "0.949(8)", fmt(extra[raw]["rem18"]))
+    add("xi_red_raw", "Results", "iiLossRaw: reduction of xi_rms", "49%",
+        f"{-rel(df, raw, c, 'xi_rms'):.0f}%")
     add("xi_red_rem", "Results", "iiLossRaw: reduction of xi_rms of the remainder", "17%",
         f"{100 * (1 - np.mean(extra[raw]['rem18']) / np.mean(extra[c]['rem18'])):.0f}%")
 
     # False positives, over the pooled out-of-fold predictions
-    fp = lambda stem: col(stem, "FP").mean()
-    add("FP_control", "Results, false positives", "false positives, control", "43 149", f"{fp(c):.0f}")
+    def fp(stem):
+        return col(stem, "FP").mean()
+    add("FP_control", "Results, false positives", "false positives, control", "43 149",
+        f"{fp(c):.0f}")
     for stem, old in ((raw, "20 244 (47%)"), (ii, "-")):
-        add(f"FP_removed_{stem}", "Results, false positives", f"false positives removed, {stem}", old,
-            f"{fp(c) - fp(stem):.0f} ({100 * (1 - fp(stem) / fp(c)):.0f}%)")
+        add(f"FP_removed_{stem}", "Results, false positives", f"false positives removed, {stem}",
+            old, f"{fp(c) - fp(stem):.0f} ({100 * (1 - fp(stem) / fp(c)):.0f}%)")
     for stem, old in ((c, "69.6%"), (raw, "44.4%"), (ii, "-")):
-        add(f"predpos_{stem}", "Results, false positives", f"predicted-stable fraction, {stem}", old,
-            pct(col(stem, "frac_pred_stable")))
+        add(f"predpos_{stem}", "Results, false positives", f"predicted-stable fraction, {stem}",
+            old, pct(col(stem, "frac_pred_stable")))
     prevalence = col(c, "frac_true_stable").mean()
     for stem, old in ((c, "1.15x"), (raw, "1.46x"), (ii, "-")):
-        add(f"enrich_{stem}", "Results, false positives", f"enrichment over the base rate, {stem}", old,
-            f"{col(stem, 'precision').mean() / prevalence:.2f}x")
+        add(f"enrich_{stem}", "Results, false positives", f"enrichment over the base rate, {stem}",
+            old, f"{col(stem, 'precision').mean() / prevalence:.2f}x")
 
     # The denominator stabiliser
     eps = ("iiLoss_finetune_eps1e-05_0.2", "iiLoss_finetune_0.2", "iiLoss_finetune_eps0.001_0.2")
     for k in ("F1", "MAE_d", "MAE_f"):
         v = [col(stem, k).mean() for stem in eps]
-        add(f"eps_{k}", "Methods (eps)", f"iiLoss l=0.2 at eps 1e-5 / 1e-4 / 1e-3: {k}", "~1% (iiLossRaw)",
-            " / ".join(f"{x:.4f}" for x in v) + f"  (spread {100 * (max(v) - min(v)) / np.mean(v):.1f}%)")
+        add(f"eps_{k}", "Methods (eps)", f"iiLoss l=0.2 at eps 1e-5 / 1e-4 / 1e-3: {k}",
+            "~1% (iiLossRaw)",
+            " / ".join(f"{x:.4f}" for x in v)
+            + f"  (spread {100 * (max(v) - min(v)) / np.mean(v):.1f}%)")
     for stem in eps:
-        add(f"eps_vs_control_{stem}", "Methods (eps)", f"{stem} vs control: MAE(dH_d) / MAE(dH_f)", "-",
-            f"{rel(df, stem, c, 'MAE_d'):+.1f}% / {rel(df, stem, c, 'MAE_f'):+.1f}%")
+        add(f"eps_vs_control_{stem}", "Methods (eps)", f"{stem} vs control: MAE(dH_d) / MAE(dH_f)",
+            "-", f"{rel(df, stem, c, 'MAE_d'):+.1f}% / {rel(df, stem, c, 'MAE_f'):+.1f}%")
 
 
 def section_selection():
     print("\nlam selection")
-    logs = [json.load(open(p)) for p in glob.glob(os.path.join(RESULTS, "2025", "nested", "selection*.json"))]
+    logs = load_logs("selection*.json")
     for width in sorted({log["width"] for log in logs}):
         sub = [log for log in logs if log["width"] == width]
         for obj in sub[0]["objectives"]:
@@ -286,6 +320,7 @@ def section_capacity():
     df = split_seed(pd.read_csv(os.path.join(RESULTS, "2025", "spectral_summary_2025.csv")))
     seeds = sorted(df[df.stem == "iiLoss_finetune_0.0_w32"].seed.unique())
     df = df[df.seed.isin(seeds)]
+    old = "+0% (w32) ... +6.8% (w1024), F1"
     for width in (32, 64, 128, 256, 512, 1024):
         tag = "" if width == 1024 else f"_w{width}"
         ctl = "iiLoss_finetune_0.0" + tag
@@ -295,7 +330,7 @@ def section_capacity():
             for k in ("MAE_f", "MAE_d", "F1", "ROC_AUC"):
                 add(f"cap_{k}_{stem}_w{width}", "Sec. iiLoss (capacity); SI Fig. S3",
                     f"width {width}: {stem} vs control, {k}",
-                    "+0% (w32) ... +6.8% (w1024), F1" if (k == "F1" and stem == "iiLoss_nested") else "-",
+                    old if (k == "F1" and stem == "iiLoss_nested") else "-",
                     f"{rel(df, stem + tag, ctl, k):+.1f}%")
 
 
@@ -304,14 +339,14 @@ def section_prospective():
     df = split_seed(pd.read_csv(os.path.join(RESULTS, "wbm", "prospective_summary.csv")))
     c = "iiLoss_finetune_0.0"
     for stem in ("iiLoss_finetune_0.2", "iiLossRaw_finetune_0.2", "HdLoss_finetune_0.1"):
-        for k in ("closed_MAE_d", "MAE_f_wbm", "uniq_F1", "uniq_DAF", "uniq_precision", "uniq_recall",
-                  "uniq_MAE_hull", "uniq_ROC_AUC", "full_F1", "closed_Xi2_Q", "closed_F1",
-                  "novel_MAE_hull", "novel_DAF", "novel_F1", "closed_novel_MAE_d"):
+        for k in ("closed_MAE_d", "MAE_f_wbm", "uniq_F1", "uniq_DAF", "uniq_precision",
+                  "uniq_recall", "uniq_MAE_hull", "uniq_ROC_AUC", "full_F1", "closed_Xi2_Q",
+                  "closed_F1", "novel_MAE_hull", "novel_DAF", "novel_F1", "closed_novel_MAE_d"):
             add(f"wbm_{k}_{stem}", "new (prospective)", f"{stem} vs control: {k}", "-",
                 f"{rel(df, stem, c, k):+.1f}%")
     ctl = seeds_of(df, c)
-    add("wbm_control_uniq_F1", "new (prospective)", "control: official F1 (unique prototypes)", "-",
-        fmt(ctl.uniq_F1))
+    add("wbm_control_uniq_F1", "new (prospective)", "control: official F1 (unique prototypes)",
+        "-", fmt(ctl.uniq_F1))
     add("wbm_control_closed_MAE_d", "new (prospective)", "control: closed MAE(dH_d)", "-",
         fmt(ctl.closed_MAE_d))
 
@@ -330,13 +365,15 @@ def section_mlip():
     X = np.c_[np.ones(len(ml)), np.log(ml.MAE_f), (ml.group == "extended-data MLIP").astype(float)]
     coef, *_ = np.linalg.lstsq(X, np.log(ml.MAE_d_closed), rcond=None)
     add("mlip_shift", "new (SI)", "extended-data potentials, MAE(dH_d) at equal MAE(dH_f)", "-",
-        f"{100 * (np.exp(coef[2]) - 1):+.1f}%", "log-log fit with a group term; p in mlip_score.py")
-    a, b = ml.MAE_f.to_numpy(), ml.MAE_d_closed.to_numpy(); n = len(a)
+        f"{100 * (np.exp(coef[2]) - 1):+.1f}%",
+        "log-log fit with a group term; p in mlip_score.py")
+    a, b = ml.MAE_f.to_numpy(), ml.MAE_d_closed.to_numpy()
+    n = len(a)
     flips = sum((a[i] - a[j]) * (b[i] - b[j]) < 0 for i in range(n) for j in range(i + 1, n))
-    add("mlip_inversions", "new (SI)", "model pairs ranked differently by MAE(dH_f) and MAE(dH_d)", "-",
-        f"{flips} of {n * (n - 1) // 2}")
-    add("mlip_set", "new (SI)", "common evaluation set of the potentials: compounds / reactions", "-",
-        f"{int(ml.n_compounds.iloc[0])} / {int(ml.n_reactions.iloc[0])}")
+    add("mlip_inversions", "new (SI)", "model pairs ranked differently by MAE(dH_f) and MAE(dH_d)",
+        "-", f"{flips} of {n * (n - 1) // 2}")
+    add("mlip_set", "new (SI)", "common evaluation set of the potentials: compounds / reactions",
+        "-", f"{int(ml.n_compounds.iloc[0])} / {int(ml.n_reactions.iloc[0])}")
 
 
 def write():

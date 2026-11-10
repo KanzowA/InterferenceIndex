@@ -119,7 +119,9 @@ def run_fold(seed, fold, width, objectives, eps_check):
         m = np.isin(H["rc"], reactants)
         truth = H["hd"][m] <= 0
         pos = (H["hd"][m] - y[m]) <= 0
-        tp = (pos & truth).sum(); fp = (pos & ~truth).sum(); fn = (~pos & truth).sum()
+        tp = (pos & truth).sum()
+        fp = (pos & ~truth).sum()
+        fn = (~pos & truth).sum()
         return (float(np.abs(y[m]).mean()), float(2 * tp / max(2 * tp + fp + fn, 1)),
                 int(m.sum()))
 
@@ -156,7 +158,7 @@ def run_fold(seed, fold, width, objectives, eps_check):
     train_predict("iiLoss_save_0.0", ck_out, train)
     final = [("iiLoss_finetune_0.0", "iiLoss_finetune_0.0")]
     final += [(f"{obj}_nested", f"{obj}_finetune_{log['selected'][obj]}") for obj in objectives]
-    final += [(f"{obj}_finetune_{FIXED[obj]}", f"{obj}_finetune_{FIXED[obj]}") for obj in objectives]
+    final += [(f"{obj}_finetune_{FIXED[obj]}",) * 2 for obj in objectives]
     if "iiLoss" in objectives and eps_check:
         final += [(f"iiLoss_finetune_eps{e:g}_0.2", f"iiLoss_finetune_eps{e:g}_0.2")
                   for e in EPS_CHECK]
@@ -202,8 +204,8 @@ def merge(width):
             with open(os.path.join(out, "ml_input.json"), "w") as f:
                 json.dump(merged, f)
         for fdir in folds:
-            shutil.copy(os.path.join(fdir, "selection.json"),
-                        os.path.join(LOG_DIR, f"selection{tag}_{seed}_{os.path.basename(fdir)}.json"))
+            name = f"selection{tag}_{seed}_{os.path.basename(fdir)}.json"
+            shutil.copy(os.path.join(fdir, "selection.json"), os.path.join(LOG_DIR, name))
         print(f"{seed}: merged {len(runs)} runs, {len(keys)} compounds each")
 
 

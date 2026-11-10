@@ -64,7 +64,8 @@ def residuals(H, keys):
     ids = pd.Index(H["material_id"])
     out = {}
     for key in keys:
-        p = pd.read_csv(os.path.join(PRED_DIR, f"{key}.csv.gz")).set_index("material_id")["e_form_per_atom"]
+        path = os.path.join(PRED_DIR, f"{key}.csv.gz")
+        p = pd.read_csv(path).set_index("material_id")["e_form_per_atom"]
         p = p[~p.index.duplicated()]
         v = p.reindex(ids).to_numpy(float) - H["hf"]
         v[np.abs(v) > 5] = np.nan                      # Matbench Discovery's filter
@@ -108,7 +109,9 @@ def score_common(H, deltas, manifest):
         boot = [(w * y ** 2).sum() / (w * b).sum() for w in weights]
         truth = hd <= 0
         pos = (hd - y) <= 0
-        tp = (pos & truth).sum(); fp = (pos & ~truth).sum(); fn = (~pos & truth).sum()
+        tp = (pos & truth).sum()
+        fp = (pos & ~truth).sum()
+        fn = (~pos & truth).sum()
         prec, rec = tp / (tp + fp), tp / (tp + fn)
         res.append(dict(
             model=key, training_sets=manifest.loc[key, "training_sets"],
@@ -141,9 +144,11 @@ def report(d):
     s2 = resid @ resid / (len(ml) - 3)
     se = np.sqrt(np.diag(s2 * np.linalg.inv(X.T @ X)))
     p = 2 * stats.t.sf(abs(coef[2] / se[2]), len(ml) - 3)
-    print(f"\nlog MAE_d = {coef[0]:.3f} + {coef[1]:.3f} log MAE_f + {coef[2]:+.4f} [extended data]")
+    print(f"\nlog MAE_d = {coef[0]:.3f} + {coef[1]:.3f} log MAE_f "
+          f"+ {coef[2]:+.4f} [extended data]")
     print(f"  at equal MAE(dfH), extended-data potentials have "
-          f"{100 * (np.exp(coef[2]) - 1):+.1f} % MAE(dH_d)  (t = {coef[2] / se[2]:.2f}, p = {p:.3f})")
+          f"{100 * (np.exp(coef[2]) - 1):+.1f} % MAE(dH_d)  "
+          f"(t = {coef[2] / se[2]:.2f}, p = {p:.3f})")
 
     a, b = ml.MAE_f.to_numpy(), ml.MAE_d_closed.to_numpy()
     n = len(a)
