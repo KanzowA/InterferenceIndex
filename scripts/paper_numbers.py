@@ -310,7 +310,7 @@ def change(values):
 
 
 def reaction_errors(H, stem, gauge=False):
-    """Per seed: y, |c| (gauge-fixed if asked) and |delta| of the compounds."""
+    """Per seed: y, |r| (gauge-fixed if asked) and |delta| of the compounds."""
     Y, R, A = [], [], []
     for path in sorted(glob.glob(os.path.join(ML_2025, f"{stem}_s*", "ml_input.json"))):
         with open(path) as f:
@@ -326,7 +326,7 @@ def reaction_errors(H, stem, gauge=False):
 
 
 def section_fig5():
-    print("\nFigure 5: error distribution, N, the xi / |c| split, compound roles")
+    print("\nFigure 5: error distribution, N, the xi / |r| split, compound roles")
     H = load_hull(HULLOUT_MAP["2025"])
     nfree, roles = free_sizes(H), product_counts(H)
     c, ii = "iiLoss_finetune_0.0", "iiLoss_nested"
@@ -347,7 +347,7 @@ def section_fig5():
         add(f"F5c_IQR_{stem}", "Fig. 5c caption", f"interquartile range of the dH_d error, {stem}",
             "-", fmt(q75 - q25))
 
-    # (d, e) per N, and the split of the change into its xi and |c| parts
+    # (d, e) per N, and the split of the change into its xi and |r| parts
     groups = [("1", nfree == 1), ("2", nfree == 2), ("3", nfree == 3), ("4", nfree == 4),
               ("5", nfree == 5), (">=6", nfree >= 6), ("all", nfree >= 1)]
     runs = (("", ii, False), ("Q_", ii, True), ("", "HdLoss_nested", False),
@@ -355,7 +355,7 @@ def section_fig5():
     for tag, stem, gauge in runs:
         y0, r0, _ = reaction_errors(H, c, gauge) if gauge else (yc, rc, ac)
         y1, r1, _ = reaction_errors(H, stem, gauge)
-        xi_part, c_part = error_split(y0, r0, y1, r1)
+        xi_part, r_part = error_split(y0, r0, y1, r1)
         mae0 = np.abs(y0)
         where = "Fig. 5d,e" if stem == ii and not gauge else "SI (error split)"
         for name, m in groups:
@@ -369,8 +369,8 @@ def section_fig5():
             kind = "gauge-fixed " if gauge else ""
             add(f"F5e_{tag}xi_{name}_{stem}", where, f"{kind}xi part of it, {label}", "-",
                 change(100 * xi_part[:, m].mean(axis=1) / base))
-            add(f"F5e_{tag}c_{name}_{stem}", where, f"{kind}|c| part of it, {label}", "-",
-                change(100 * c_part[:, m].mean(axis=1) / base))
+            add(f"F5e_{tag}r_{name}_{stem}", where, f"{kind}|r| part of it, {label}", "-",
+                change(100 * r_part[:, m].mean(axis=1) / base))
 
     # (f) MAE(dH_f) by the DFT hull distance (row j of the hull is compound j),
     # and Figure S7a by the number of reactions a compound enters as a product

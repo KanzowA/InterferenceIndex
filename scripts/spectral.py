@@ -21,7 +21,7 @@ What is computed from it
     ML hull     the hull rebuilt from the model's own formation enthalpies, by LP,
                 and each compound classified by its distance to it
     error split the change of each reaction error between two models, split
-                into the part carried by xi and the part carried by |c|
+                into the part carried by xi and the part carried by |r|
 
 The 2020 hullout stores formula-unit amounts; they are rescaled to per-atom
 weights by N_k / N_c, detected from the data as interference_score.py does.
@@ -210,15 +210,15 @@ def product_counts(H):
 
 
 def error_split(y0, r0, y1, r1):
-    """Split the change of |(S delta)_j| into a xi part and a |c| part.
+    """Split the change of |(S delta)_j| into a xi part and a |r| part.
 
-    Every reaction error factorises as |y| = xi |c|, with |c| = sqrt(q). The
+    Every reaction error factorises as |y| = xi |r|, with |r| = sqrt(q). The
     change from model 0 to model 1 is split symmetrically (the Shapley split of
     a product), so that per reaction
 
-        |y1| - |y0| = dxi (|c0| + |c1|) / 2  +  d|c| (xi0 + xi1) / 2
+        |y1| - |y0| = dxi (|r0| + |r1|) / 2  +  d|r| (xi0 + xi1) / 2
 
-    holds exactly. Reactions with |c| = 0 carry no error and contribute zero.
+    holds exactly. Reactions with |r| = 0 carry no error and contribute zero.
     """
     def xi(y, r):
         return np.divide(np.abs(y), r, out=np.zeros_like(r), where=r > 0)

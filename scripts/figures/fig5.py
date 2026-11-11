@@ -3,7 +3,7 @@
     (a) xi, matched control (lam = 0)     (b) xi, iiLoss (lam from validation)
     (c) distribution of dH_d,ML - dH_d,DFT, control and iiLoss
     (d) change of MAE(dH_d) against N
-    (e) the same change split into its xi part and its |c| part
+    (e) the same change split into its xi part and its |r| part
     (f) change of MAE(dH_f) against the DFT hull distance of the compound
 
 Figure S6 is the same layout for the preprint's objective, iiLossRaw at
@@ -13,7 +13,7 @@ Every number is computed from the out-of-fold predictions in
 data/<year>/ml/Hf/, with spectral.py. Each model is paired with the control of
 the same seed; bars are means over the seeds and error bars the sample standard
 deviation. Panels a and b pool the seeds, as fig1.py pools models. Panel e uses
-the exact split |y| = xi |c| of spectral.error_split, so its two bars add up to
+the exact split |y| = xi |r| of spectral.error_split, so its two bars add up to
 the bar of panel d at every N. Panel f shows where the accuracy goes: to the
 compounds on and near the hull, at a small cost far above it. Why the hull
 phases gain is in Figure S7 (figS7.py), by the number of reactions in which a
@@ -106,7 +106,7 @@ HULL_GROUPS = [(r"$\leq 0$", None, 0.0), (r"$0$–$0.1$", 0.0, 0.1),
 # -- Data -----------------------------------------------------------------
 
 def load_runs(H, year, stem):
-    """Per seed: reaction sums y and norms |c|, and |delta| per compound."""
+    """Per seed: reaction sums y and norms |r|, and |delta| per compound."""
     nc = H["ncomp"]
     out = {}
     for path in sorted(glob.glob(os.path.join(REPO_ROOT, "data", year, "ml", "Hf",
@@ -305,7 +305,7 @@ def build_figure(H, control, model, labels):
     nfree = free_sizes(H)
     n_masks = group_masks(nfree, N_GROUPS)
     f_masks = hull_masks(H["hd"][:H["ncomp"]])
-    xi_part, c_part = error_split(control["y"], control["r"], model["y"], model["r"])
+    xi_part, r_part = error_split(control["y"], control["r"], model["y"], model["r"])
     abs_c, abs_m = np.abs(control["y"]), np.abs(model["y"])
 
     def rel_change(numerator, m):
@@ -354,13 +354,13 @@ def build_figure(H, control, model, labels):
     # (c)
     draw_error_distribution(ax_c, -control["y"], -model["y"], labels)
 
-    # (d, e) tied: e splits each bar of d into its xi part and its |c| part
+    # (d, e) tied: e splits each bar of d into its xi part and its |r| part
     x = np.arange(len(n_masks))
     total = np.array([rel_change(abs_m - abs_c, m) for _, m in n_masks])
     lo_d, hi_d = draw_bars(ax_d, x, total, masks=n_masks)
     lo_1, hi_1 = draw_bars(ax_e, x, np.array([rel_change(xi_part, m) for _, m in n_masks]),
                            offset=-0.2, width=0.38)
-    lo_2, hi_2 = draw_bars(ax_e, x, np.array([rel_change(c_part, m) for _, m in n_masks]),
+    lo_2, hi_2 = draw_bars(ax_e, x, np.array([rel_change(r_part, m) for _, m in n_masks]),
                            offset=0.2, width=0.38, hatch="////")
     lo = min(lo_d.min(), lo_1.min(), lo_2.min())
     hi = max(hi_d.max(), hi_1.max(), hi_2.max())
@@ -372,7 +372,7 @@ def build_figure(H, control, model, labels):
     ax_e.legend(handles=[
         mpatches.Patch(facecolor=COL_II, alpha=0.85, label=r"via $\xi$"),
         mpatches.Patch(facecolor="white", edgecolor=COL_II, hatch="////",
-                       label=r"via $\Vert\mathbf{c}\Vert$")],
+                       label=r"via $\Vert\mathbf{r}\Vert$")],
         loc="lower left", fontsize=_FS_SM, frameon=False)
 
     # (f)
