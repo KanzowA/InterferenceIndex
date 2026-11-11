@@ -4,8 +4,7 @@
     (c) distribution of dH_d,ML - dH_d,DFT, control and iiLoss
     (d) change of MAE(dH_d) against N
     (e) the same change split into its xi part and its |c| part
-    (f) change of MAE(dH_f) against the number of reactions a compound enters
-        as a decomposition product
+    (f) change of MAE(dH_f) against the DFT hull distance of the compound
 
 Figure S6 is the same layout for the preprint's objective, iiLossRaw at
 lam = 0.2, against the same control.
@@ -15,7 +14,10 @@ data/<year>/ml/Hf/, with spectral.py. Each model is paired with the control of
 the same seed; bars are means over the seeds and error bars the sample standard
 deviation. Panels a and b pool the seeds, as fig1.py pools models. Panel e uses
 the exact split |y| = xi |c| of spectral.error_split, so its two bars add up to
-the bar of panel d at every N.
+the bar of panel d at every N. Panel f shows where the accuracy goes: to the
+compounds on and near the hull, at a small cost far above it. Why the hull
+phases gain is in Figure S7 (figS7.py), by the number of reactions in which a
+compound is a decomposition product.
 
 Arcs and scatter of panels a and b are drawn for N <= 10 to keep the fig1
 frame, while xi_rms and the reported fraction are computed over all reactions,
@@ -48,7 +50,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from spectral import (HULLOUT_MAP, error_split, free_sizes, load_hull,
-                      product_counts, reaction_sums, residual)
+                      reaction_sums, residual)
 
 COL_REF = "#6B7280"
 COL_II  = "#E61D60"
@@ -95,8 +97,10 @@ DEFAULT_LABELS = ["control", "iiLoss"]
 
 N_GROUPS = [(r"$1$", 1, 1), (r"$2$", 2, 2), (r"$3$", 3, 3), (r"$4$", 4, 4),
             (r"$5$", 5, 5), (r"$\geq 6$", 6, None)]
-ROLE_GROUPS = [(r"$0$", 0, 0), (r"$1$–$2$", 1, 2), (r"$3$–$9$", 3, 9),
-               (r"$10$–$99$", 10, 99), (r"$\geq 100$", 100, None)]
+# DFT hull distance in eV/atom; the bins are half-open on the left, (lo, hi]
+HULL_GROUPS = [(r"$\leq 0$", None, 0.0), (r"$0$–$0.1$", 0.0, 0.1),
+               (r"$0.1$–$0.3$", 0.1, 0.3), (r"$0.3$–$1$", 0.3, 1.0),
+               (r"$> 1$", 1.0, None)]
 
 
 # -- Data -----------------------------------------------------------------
@@ -143,8 +147,23 @@ def xi_distribution(y, r, nfree):
 
 
 def group_masks(values, groups):
+    """Masks for integer groups [lo, hi]; hi = None is open."""
     return [(label, (values >= lo) & ((values <= hi) if hi is not None else True))
             for label, lo, hi in groups]
+
+
+def hull_masks(hd):
+    """Masks for the hull-distance bins (lo, hi]; None is open."""
+    return [(label, ((hd > lo) if lo is not None else True)
+             & ((hd <= hi) if hi is not None else True))
+            for label, lo, hi in HULL_GROUPS]
+
+
+def change_f(control, model, masks):
+    """Relative change of MAE(dH_f) per group (group x seed), in %."""
+    return np.array([100 * (model["abs_f"][:, m].mean(axis=1)
+                            / control["abs_f"][:, m].mean(axis=1) - 1)
+                     for _, m in masks])
 
 
 # -- Panels ---------------------------------------------------------------
@@ -285,7 +304,7 @@ def bar_frame(ax, x, labels, lo, hi):
 def build_figure(H, control, model, labels):
     nfree = free_sizes(H)
     n_masks = group_masks(nfree, N_GROUPS)
-    role_masks = group_masks(product_counts(H), ROLE_GROUPS)
+    f_masks = hull_masks(H["hd"][:H["ncomp"]])
     xi_part, c_part = error_split(control["y"], control["r"], model["y"], model["r"])
     abs_c, abs_m = np.abs(control["y"]), np.abs(model["y"])
 
@@ -357,13 +376,10 @@ def build_figure(H, control, model, labels):
         loc="lower left", fontsize=_FS_SM, frameon=False)
 
     # (f)
-    x = np.arange(len(role_masks))
-    change_f = np.array([100 * (model["abs_f"][:, m].mean(axis=1)
-                                / control["abs_f"][:, m].mean(axis=1) - 1)
-                         for _, m in role_masks])
-    lo_f, hi_f = draw_bars(ax_f, x, change_f, masks=role_masks)
-    bar_frame(ax_f, x, [g[0] for g in role_masks], lo_f.min(), hi_f.max())
-    ax_f.set_xlabel("reactions as decomposition product", fontsize=_FS)
+    x = np.arange(len(f_masks))
+    lo_f, hi_f = draw_bars(ax_f, x, change_f(control, model, f_masks), masks=f_masks)
+    bar_frame(ax_f, x, [g[0] for g in f_masks], lo_f.min(), hi_f.max())
+    ax_f.set_xlabel(r"$\Delta_\mathrm{d}H^\mathrm{DFT}$ / eV atom$^{-1}$", fontsize=_FS)
     ax_f.set_ylabel(r"$\Delta\mathrm{MAE}(\Delta_\mathrm{f}H)$ / %", fontsize=_FS)
 
     # Panel letters on one line per row, above the tallest xi histogram

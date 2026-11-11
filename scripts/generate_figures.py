@@ -79,6 +79,9 @@ FIGURES = [
      ["--models", "iiLoss_finetune_0.0", "iiLossRaw_finetune_0.2",
       "--labels", "control", "iiLossRaw",
       "--out", "figures/figureS6.png"], [PREDS_2025]),
+
+    ("S7", "Where the accuracy in dfH goes, iiLoss and HdLoss",
+     "scripts/figures/figS7.py", [], [PREDS_2025]),
 ]
 
 

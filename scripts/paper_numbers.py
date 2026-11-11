@@ -372,24 +372,39 @@ def section_fig5():
             add(f"F5e_{tag}c_{name}_{stem}", where, f"{kind}|c| part of it, {label}", "-",
                 change(100 * c_part[:, m].mean(axis=1) / base))
 
-    # (f) MAE(dH_f) by the number of reactions a compound enters as a product
-    stable = H["hd"][:H["ncomp"]] <= 0
-    groups = [("0", "product in 0 reactions", roles == 0),
-              ("1-2", "product in 1-2 reactions", (roles >= 1) & (roles <= 2)),
-              ("3-9", "product in 3-9 reactions", (roles >= 3) & (roles <= 9)),
-              ("10-99", "product in 10-99 reactions", (roles >= 10) & (roles <= 99)),
-              (">=100", "product in >=100 reactions", roles >= 100),
-              ("stable", "on the hull (dH_d <= 0)", stable),
-              ("unstable", "above the hull", ~stable),
-              ("all", "all compounds", roles >= 0)]
-    for stem in (ii, "HdLoss_nested", "iiLossRaw_nested", "iiLossRaw_finetune_0.2"):
+    # (f) MAE(dH_f) by the DFT hull distance (row j of the hull is compound j),
+    # and Figure S7a by the number of reactions a compound enters as a product
+    hd = H["hd"][:H["ncomp"]]
+    hull = [("<=0", "on the hull (dH_d <= 0)", hd <= 0),
+            ("0-0.1", "0 < dH_d <= 0.1 eV/atom", (hd > 0) & (hd <= 0.1)),
+            ("0.1-0.3", "0.1 < dH_d <= 0.3 eV/atom", (hd > 0.1) & (hd <= 0.3)),
+            ("0.3-1", "0.3 < dH_d <= 1 eV/atom", (hd > 0.3) & (hd <= 1)),
+            (">1", "dH_d > 1 eV/atom", hd > 1),
+            ("all", "all compounds", hd > -np.inf)]
+    role = [("0", "product in 0 reactions", roles == 0),
+            ("1-2", "product in 1-2 reactions", (roles >= 1) & (roles <= 2)),
+            ("3-9", "product in 3-9 reactions", (roles >= 3) & (roles <= 9)),
+            ("10-99", "product in 10-99 reactions", (roles >= 10) & (roles <= 99)),
+            (">=100", "product in >=100 reactions", roles >= 100)]
+    where = {ii: ("Fig. 5f", "SI Fig. S7a"), "HdLoss_nested": ("SI Fig. S7b", "SI Fig. S7a"),
+             "iiLossRaw_nested": ("SI (error split)", "SI (error split)"),
+             "iiLossRaw_finetune_0.2": ("SI Fig. S6f", "SI (error split)")}
+    for stem, (at_hull, at_role) in where.items():
         a1 = reaction_errors(H, stem)[2]
-        for name, text, m in groups:
-            if stem != ii and name not in ("0", ">=100", "all"):
-                continue
-            add(f"F5f_{name}_{stem}", "Fig. 5f" if stem == ii else "SI (error split)",
-                f"change in MAE(dH_f), {text} ({int(m.sum())}), {stem}",
-                "-", change(100 * (a1[:, m].mean(axis=1) / ac[:, m].mean(axis=1) - 1)))
+        for prefix, groups, at in (("F5f", hull, at_hull), ("S7", role, at_role)):
+            for name, text, m in groups:
+                if stem.startswith("iiLossRaw") and prefix == "S7" and name not in ("0", ">=100"):
+                    continue
+                add(f"{prefix}_{name}_{stem}", at,
+                    f"change in MAE(dH_f), {text} ({int(m.sum())}), {stem}",
+                    "-", change(100 * (a1[:, m].mean(axis=1) / ac[:, m].mean(axis=1) - 1)))
+        # what the MAE does not show: the large errors
+        for name, stat in (("RMSE", lambda a: np.sqrt((a ** 2).mean(axis=1))),
+                           ("p95", lambda a: np.percentile(a, 95, axis=1)),
+                           ("p99", lambda a: np.percentile(a, 99, axis=1))):
+            add(f"F5f_{name}_{stem}", "Fig. 5f caption; Discussion" if stem == ii else "SI",
+                f"change in the {name} of |dH_f error|, {stem}", "-",
+                change(100 * (stat(a1) / stat(ac) - 1)))
 
 
 def section_selection():
@@ -430,7 +445,8 @@ def section_prospective():
     for stem in ("iiLoss_finetune_0.2", "iiLossRaw_finetune_0.2", "HdLoss_finetune_0.1"):
         for k in ("closed_MAE_d", "MAE_f_wbm", "uniq_F1", "uniq_DAF", "uniq_precision",
                   "uniq_recall", "uniq_MAE_hull", "uniq_ROC_AUC", "full_F1", "closed_Xi2_Q",
-                  "closed_F1", "novel_MAE_hull", "novel_DAF", "novel_F1", "closed_novel_MAE_d"):
+                  "closed_F1", "novel_MAE_hull", "novel_DAF", "novel_F1", "closed_novel_MAE_d",
+                  "full_RMSE_hull"):
             add(f"wbm_{k}_{stem}", "new (prospective)", f"{stem} vs control: {k}", "-",
                 f"{rel(df, stem, c, k):+.1f}%")
     ctl = seeds_of(df, c)
