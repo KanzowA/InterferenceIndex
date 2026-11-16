@@ -80,8 +80,11 @@ FIGURES = [
       "--labels", "control", r"naive $\langle\xi^2\rangle$",
       "--out", "figures/figureS6.png"], [PREDS_2025]),
 
-    ("S7", "Where the accuracy in dfH goes, iiLoss and HdLoss",
-     "scripts/figures/figS7.py", [], [PREDS_2025]),
+    ("S7", "Accuracy, cancellation and bias of the compositional models",
+     "scripts/figures/figS7.py", [], []),
+
+    ("S8", "Where the accuracy in dfH goes, iiLoss and HdLoss",
+     "scripts/figures/figS8.py", [], [PREDS_2025]),
 ]
 
 
