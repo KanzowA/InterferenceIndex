@@ -27,8 +27,8 @@ SCORES_2020 = ("results/2020/interference_scores_2020.csv",
                "python scripts/interference_score.py 2020")
 SCORES_2026 = ("results/2026/interference_scores_2026.csv",
                "python scripts/interference_score.py 2026")
-CURVES = ("data/2026/ml/Hf/*_finetune_*_s*/training_curve.csv",
-          "bash scripts/sweep.sh Hf 0 1 2   (or restore data/ from Zenodo)")
+CURVES = ("data/wbm/curves/*_s*.csv",
+          "bash scripts/prospective.sh   (the curves are tracked in git)")
 SELECTION = ("results/2025/nested/selection_s*_f*.json",
              "bash scripts/nested.sh   (the logs are tracked in git)")
 PREDS_2025 = ("data/2025/ml/Hf/iiLoss_nested_s*/ml_input.json",
@@ -69,15 +69,15 @@ FIGURES = [
     ("S4", "Interference diagnostic for the Matbench Discovery models",
      "scripts/figures/figS4.py", [], [MLIP]),
 
-    ("S5", "Lambda on the validation split, with the preprint's objective",
+    ("S5", "Lambda on the validation split, with the naive penalty",
      "scripts/figures/fig4.py",
      ["--objectives", "iiLoss", "iiLossRaw", "HdLoss",
       "--out", "figures/figureS5.png"], [SELECTION]),
 
-    ("S6", "Figure 5 for the preprint's objective",
+    ("S6", "Figure 5 for the naive penalty",
      "scripts/figures/fig5.py",
      ["--models", "iiLoss_finetune_0.0", "iiLossRaw_finetune_0.2",
-      "--labels", "control", "iiLossRaw",
+      "--labels", "control", r"naive $\langle\xi^2\rangle$",
       "--out", "figures/figureS6.png"], [PREDS_2025]),
 
     ("S7", "Where the accuracy in dfH goes, iiLoss and HdLoss",

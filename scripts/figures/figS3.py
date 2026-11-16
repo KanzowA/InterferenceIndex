@@ -91,8 +91,8 @@ def change_points(df, run, widths, col):
 # -- Figure ---------------------------------------------------------------
 def build_figure(df, runs, widths):
     df = _split(df)
-    fig, axes = plt.subplots(1, 4, figsize=(15, 3.9),
-                             gridspec_kw=dict(wspace=0.42))
+    fig, axes = plt.subplots(1, 4, figsize=(16.5, 3.9),
+                             gridspec_kw=dict(wspace=0.62))
 
     for ax_idx, (ax, (col, ylabel)) in enumerate(zip(axes, METRICS)):
         for run in runs:
@@ -113,9 +113,9 @@ def build_figure(df, runs, widths):
         ax.set_xlabel("base width", fontsize=_FS)
         ax.set_ylabel(ylabel, fontsize=_FS)
         ax.yaxis.set_major_locator(
-            ticker.MaxNLocator(nbins=6, steps=[1, 2, 2.5, 5, 10]))
+            ticker.MaxNLocator(nbins=6, steps=[1, 2, 5, 10]))
         ax.grid(True, which="major", lw=0.4, alpha=0.5)
-        ax.text(-0.3, 1.04, "abcd"[ax_idx], transform=ax.transAxes,
+        ax.text(-0.36, 1.04, "abcd"[ax_idx], transform=ax.transAxes,
                 fontsize=_FS_PANEL, fontweight="bold", va="bottom", ha="left",
                 clip_on=False)
 

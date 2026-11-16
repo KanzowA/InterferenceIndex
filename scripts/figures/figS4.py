@@ -1,6 +1,6 @@
 """Figure S4: the interference diagnostic for the Matbench Discovery models.
 
-    (a) gauge-fixed index Xi2_Q against MAE(dfH), with 95 % intervals
+    (a) gauge-free index Xi2_Q (tilde Xi^2 in the paper) against MAE(dfH), with 95 % intervals
     (b) MAE(dH_d) / MAE(dfH), the factor by which a formation-energy error
         turns into a decomposition-energy error, against MAE(dfH)
     (c) the same factor against Xi2_Q, for the potentials
@@ -39,9 +39,9 @@ plt.rcParams.update({
     "axes.linewidth": 0.8,
 })
 
-_COL_MP  = "#1E46E4"
-_COL_EXT = "#7A1FA2"
-_COL_OLD = "#6B7280"
+_COL_MP  = "#2E8B3E"
+_COL_EXT = "#C2549D"
+_COL_OLD = "#E0B422"
 _COL_REF = "#000000"
 
 # -- Series ---------------------------------------------------------------
@@ -50,7 +50,7 @@ GROUPS = {
                          label="potential, MP data only"),
     "extended-data MLIP": dict(color=_COL_EXT, marker="s", fill=True,
                                label="potential, extended training data"),
-    "pre-MLIP": dict(color=_COL_OLD, marker="^", fill=False,
+    "pre-MLIP": dict(color=_COL_OLD, marker="^", fill=True,
                      label="earlier energy model"),
 }
 
@@ -102,7 +102,7 @@ def build_figure(df):
     ax.text(0.02, 0.96, "errors accumulate", transform=ax.transAxes, fontsize=_FS_SM,
             style="italic", ha="left", va="top")
     mae_axis(ax)
-    ax.set_ylabel(r"gauge-fixed index $\Xi^2_Q$", fontsize=_FS)
+    ax.set_ylabel(r"gauge-free index $\widetilde{\Xi}^2$", fontsize=_FS)
 
     ax = axes[1]
     scatter(ax, df, "MAE_f", "ratio")
@@ -118,7 +118,7 @@ def build_figure(df):
     ax = axes[2]
     scatter(ax, df[df.group != "pre-MLIP"], "Xi2_Q", "ratio")
     ax.axvline(1.0, color=_COL_REF, ls=":", lw=0.9, alpha=0.6, zorder=1)
-    ax.set_xlabel(r"gauge-fixed index $\Xi^2_Q$", fontsize=_FS)
+    ax.set_xlabel(r"gauge-free index $\widetilde{\Xi}^2$", fontsize=_FS)
     ax.set_ylabel(RATIO_LABEL, fontsize=_FS)
 
     for i, ax in enumerate(axes):
@@ -129,7 +129,7 @@ def build_figure(df):
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=3, fontsize=_FS,
-               framealpha=0.9, bbox_to_anchor=(0.5, -0.12))
+               framealpha=0.9, bbox_to_anchor=(0.5, -0.17))
     return fig
 
 

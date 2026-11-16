@@ -48,12 +48,12 @@ _COL_HD  = "#1E46E4"
 _COL_REF = "#000000"
 
 # -- Series and panels ----------------------------------------------------
-# The preprint's objective shares the colour of iiLoss and is told apart by
-# open markers and a lighter line, as the PCGrad variants were in the preprint.
+# The naive <xi^2> penalty shares the colour of iiLoss and is told apart by
+# open markers and a lighter line.
 SERIES = {
     "iiLoss": dict(key="iiLoss", color=_COL_II, marker="s", lw=1.8, ms=5,
                    alpha=1.0, fill=True),
-    "iiLossRaw (preprint)": dict(key="iiLossRaw", color=_COL_II, marker="s", lw=1.0,
+    r"naive $\langle\xi^2\rangle$": dict(key="iiLossRaw", color=_COL_II, marker="s", lw=1.0,
                                  ms=4, alpha=0.55, fill=False),
     "HdLoss": dict(key="HdLoss", color=_COL_HD, marker="o", lw=1.8, ms=5,
                    alpha=1.0, fill=True),
@@ -144,7 +144,10 @@ def build_figure(logs, objectives):
             handles.setdefault(label, handle)
     fig.legend(list(handles.values()), list(handles.keys()),
                loc="lower center", ncol=4, fontsize=_FS_LEG,
-               framealpha=0.9, bbox_to_anchor=(0.5, -0.12))
+               framealpha=0.9,
+               # the naive label is taller (angle brackets), so the legend of
+               # Figure S5 sits lower than that of Figure 4
+               bbox_to_anchor=(0.5, -0.12 if len(handles) <= 3 else -0.16))
 
     for ax, letter in zip(axes, "abc"):
         ax.text(-0.22, 1.04, letter, transform=ax.transAxes,
