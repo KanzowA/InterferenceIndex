@@ -7,6 +7,8 @@ last quoted digit, matching the convention of Table 2 of the main text.
     eps       the denominator stabiliser check at the operating point
     surgery   conditional against unconditional gradient surgery
     capacity  the lam = 0 ladder over base widths
+    flips     where iiLoss changes the stability class, by DFT hull distance
+              (2025 hull; computed from the predictions, not the summary)
 
 Usage
 -----
@@ -15,12 +17,17 @@ Usage
     python scripts/si_tables.py --section sweep > si_tables.tex
     python scripts/si_tables.py --decimals 4
     python scripts/si_tables.py --metrics Hf_MAE Hd_MAE F1 rms_xi Precision Recall
+    python scripts/si_tables.py --dataset 2025 --section flips
 """
 
 import argparse
 import csv
+import glob
+import json
 import os
 from statistics import mean, stdev
+
+import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
@@ -192,13 +199,62 @@ def section_capacity(groups, metrics, decimals, widths):
                       "base width")
 
 
+def section_flips():
+    """Compounds iiLoss classifies differently from the control, by hull distance."""
+    from spectral import (FLIP_EDGES, HULLOUT_MAP, classification_flips, load_hull,
+                          reaction_sums, residual)
+
+    H = load_hull(HULLOUT_MAP["2025"])
+    def sums(stem):
+        ys = []
+        for path in sorted(glob.glob(os.path.join(REPO_ROOT, "data", "2025", "ml", "Hf",
+                                                  f"{stem}_s*", "ml_input.json"))):
+            with open(path) as handle:
+                d, _ = residual(H, json.load(handle))
+            ys.append(reaction_sums(H, d)[0])
+        return np.array(ys)
+    y0, y1 = sums(BASELINE), sums("iiLoss_nested")
+    if not len(y0) or len(y0) != len(y1):
+        return None
+
+    def count(v, sign=""):
+        return f"{np.mean(v):{sign}.0f}({max(1, round(np.std(v, ddof=1)))})"
+
+    def edge(x):
+        return r"-\infty" if x == -np.inf else (r"\infty" if x == np.inf else f"{x:g}")
+
+    out = ["\\begin{table}[H]", "  \\centering", "  \\small",
+           "  \\begin{tabular}{lrrrrr}\\toprule",
+           r"    $\Del_\mathrm{d}H^\mathrm{DFT}$ / eV\,atom$^{-1}$ & compounds & "
+           r"now correct & now wrong & net & $\Delta\mathrm{MAE}(\Del_\mathrm{d}H)$ / \% \\\midrule"]
+    for b in classification_flips(H, y0, y1, FLIP_EDGES):
+        net = b["fixed"] - b["broken"]
+        dmae = f"{b['dmae'].mean():+.1f}({max(1, round(10 * b['dmae'].std(ddof=1)))})"
+        close = ")" if b["hi"] == np.inf else "]"
+        out.append(f"    $({edge(b['lo'])}, {edge(b['hi'])}{close}$ & {b['n']} & {count(b['fixed'])}"
+                   f" & {count(b['broken'])} & ${count(net, '+')}$ & ${dmae}$ \\\\")
+    n = NUMBER_WORDS.get(len(y0), len(y0))
+    out += ["    \\bottomrule", "  \\end{tabular}",
+            r"  \caption{Where \textit{iiLoss} ($\lambda$ chosen on the validation split) "
+            r"changes the stability class against the matched control, by DFT hull "
+            r"distance. A compound is predicted stable when "
+            r"$\Del_\mathrm{d}H^\mathrm{ML} \le 0$. \emph{Now correct}: compounds "
+            r"\textit{iiLoss} classifies correctly and the control does not; \emph{now "
+            r"wrong}: the reverse; \emph{net}: their difference. The last column is the "
+            r"change of $\mathrm{MAE}(\Del_\mathrm{d}H)$ within the bin. Values are means "
+            rf"over {n} paired random seeds, with the parenthesised digits giving the "
+            r"sample standard deviation in units of the last quoted digit.}",
+            "  \\label{tab:si-flips}", "\\end{table}", ""]
+    return "\n".join(out)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="2026")
     parser.add_argument("--decimals", type=int, default=3)
     parser.add_argument("--metrics", nargs="+", default=DEFAULT_METRICS)
     parser.add_argument("--section", default="all",
-                        choices=["all", "sweep", "eps", "surgery", "capacity"])
+                        choices=["all", "sweep", "eps", "surgery", "capacity", "flips"])
     parser.add_argument("--surgery-lams", nargs="+",
                         default=["0.1", "0.2", "0.3", "0.4", "0.5"])
     parser.add_argument("--widths", nargs="+", type=int,
@@ -220,6 +276,9 @@ def main():
     if args.section in ("all", "capacity"):
         blocks.append(section_capacity(groups, args.metrics, args.decimals,
                                        args.widths))
+
+    if args.section == "flips" or (args.section == "all" and args.dataset == "2025"):
+        blocks.append(section_flips())
 
     for block in blocks:
         print(block if block is not None else "% no runs found for this table")

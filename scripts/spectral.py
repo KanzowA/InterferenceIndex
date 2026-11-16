@@ -3,7 +3,7 @@
 A hullout file is turned into its structure matrix S, one row per decomposition
 reaction, with -1 on the reactant and per-atom weights on the products, so that
 
-    S dfH = -dH_d     and     (S delta)_j = dH_d,ML - dH_d,DFT
+    S dfH = -dH_d     and     (S delta)_j = dH_d,DFT - dH_d,ML
 
 for a residual field delta = dfH,ML - dfH,DFT. Elemental phases are columns of S
 pinned at delta = 0, as in interference_score.py. Everything here is numpy and
@@ -22,6 +22,8 @@ What is computed from it
                 and each compound classified by its distance to it
     error split the change of each reaction error between two models, split
                 into the part carried by xi and the part carried by |r|
+    flips       the compounds whose stability class two models assign
+                differently, by DFT hull distance
 
 The 2020 hullout stores formula-unit amounts; they are rescaled to per-atom
 weights by N_k / N_c, detected from the data as interference_score.py does.
@@ -224,6 +226,32 @@ def error_split(y0, r0, y1, r1):
         return np.divide(np.abs(y), r, out=np.zeros_like(r), where=r > 0)
     x0, x1 = xi(y0, r0), xi(y1, r1)
     return (x1 - x0) * (r0 + r1) / 2, (r1 - r0) * (x0 + x1) / 2
+
+
+def classification_flips(H, y0, y1, edges):
+    """Compounds that model 1 classifies differently from model 0.
+
+    y0, y1 are (seed, reaction) arrays of (S delta). A compound is predicted
+    stable when dH_d,ML = dH_d,DFT - y <= 0. Per bin (lo, hi] of the DFT hull
+    distance and per seed: compounds model 1 gets right where model 0 did not
+    ("fixed"), the reverse ("broken"), and the change of MAE(dH_d) in %.
+    """
+    hd = H["hd"]
+    truth = hd <= 0
+    ok0 = ((hd - y0) <= 0) == truth
+    ok1 = ((hd - y1) <= 0) == truth
+    out = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        m = (hd > lo) & (hd <= hi)
+        out.append(dict(lo=lo, hi=hi, n=int(m.sum()),
+                        fixed=(~ok0 & ok1)[:, m].sum(axis=1),
+                        broken=(ok0 & ~ok1)[:, m].sum(axis=1),
+                        dmae=100 * (np.abs(y1[:, m]).mean(axis=1)
+                                    / np.abs(y0[:, m]).mean(axis=1) - 1)))
+    return out
+
+
+FLIP_EDGES = [-np.inf, -0.1, -0.05, 0.0, 0.05, 0.1, 0.3, np.inf]
 
 
 def complete_rows(H, have):

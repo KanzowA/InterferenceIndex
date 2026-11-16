@@ -41,8 +41,9 @@ REPO_ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 sys.path.insert(0, REPO_ROOT)
 
-from spectral import (HULLOUT_MAP, error_split, free_sizes, gauge_split, load_hull,
-                      product_counts, reaction_sums, residual)
+from spectral import (FLIP_EDGES, HULLOUT_MAP, classification_flips, error_split,
+                      free_sizes, gauge_split, load_hull, product_counts,
+                      reaction_sums, residual)
 
 RESULTS = os.path.join(REPO_ROOT, "results")
 ML_2025 = os.path.join(REPO_ROOT, "data", "2025", "ml", "Hf")
@@ -406,6 +407,23 @@ def section_fig5():
                 f"change in the {name} of |dH_f error|, {stem}", "-",
                 change(100 * (stat(a1) / stat(ac) - 1)))
 
+    # Where the classification changes, by DFT hull distance (SI table)
+    flips = classification_flips(H, yc, reaction_errors(H, ii)[0], FLIP_EDGES)
+    net_all, net_near = 0.0, 0.0
+    for b in flips:
+        name = f"({b['lo']:g}, {b['hi']:g}" + (")" if b["hi"] == np.inf else "]")
+        net = b["fixed"] - b["broken"]
+        add(f"flip_{b['lo']:g}_{b['hi']:g}", "SI Tab. flips; Results",
+            f"iiLoss vs control, dH_d,DFT in {name} ({b['n']}): fixed / broken / net / dMAE(dH_d)",
+            "-", f"{b['fixed'].mean():.0f} / {b['broken'].mean():.0f} / {net.mean():+.0f}"
+                 f" / {change(b['dmae'])}")
+        net_all += net.mean()
+        if b["lo"] >= -0.1 and b["hi"] <= 0.3:
+            net_near += net.mean()
+    add("flip_net", "Results", "iiLoss vs control: net compounds classified correctly", "-",
+        f"{net_all:+.0f}")
+    add("flip_share_near", "Results", "share of the net gain from -0.1 < dH_d,DFT <= 0.3 eV/atom",
+        "-", pct(net_near / net_all))
 
 def section_selection():
     print("\nlam selection")

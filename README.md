@@ -97,7 +97,7 @@ preprint, in `results/paper_numbers.md`, written by `scripts/paper_numbers.py`.
     ├── check_equivalence.py     # iiLossRaw is the preprint's model, to the bit
     ├── import_revision_runs.py  # Provenance: names of the cluster runs
     ├── summarise_runs.py        # Table 2 of the preprint
-    ├── si_tables.py             # Supporting Information tables of the preprint
+    ├── si_tables.py             # SI tables of the preprint; --section flips for the revision
     ├── reaction_coverage.py     # Fold coverage statistics
     ├── check_convergence.py     # Constant learning rate diagnostic
     ├── audit_runs.py            # Inventory of run directories
@@ -276,7 +276,9 @@ names here.
 The predictions in `data/2026/ml/` predate the revision: the `iiLoss_*` runs
 stored there were trained with the preprint's objective, `iiLossRaw` in this
 branch's registry. `summarise_runs.py`, `si_tables.py`, `check_convergence.py`
-and figures S1 and S2 still read them and reproduce the preprint.
+and figures S1 and S2 still read them and reproduce the preprint. The one
+exception is `si_tables.py --dataset 2025 --section flips`, the revision's table
+of where iiLoss changes the stability class, which reads the nested runs.
 
 ---
 
