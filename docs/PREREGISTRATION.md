@@ -61,3 +61,18 @@ or dropped after seeing results. Any deviation will be listed here with its reas
   conclusion changed.
 - **Additional robustness analysis, not pre-registered and reported as such:**
   restriction to WBM compositions absent from the MP training set.
+
+## Deviation (added 2026-11-18)
+- **Additional arms at the lambda of the nested cross-validation.** The preregistered
+  lambda (iiLoss 0.2, HdLoss 0.1) was taken from the first preprint, before the nested
+  cross-validation of the revision existed. That cross-validation, run on MP alone,
+  selects lambda = 0.3 most often for both objectives (iiLoss in 14 and HdLoss in 20
+  of 25 seed/fold combinations, results/2025/nested/selection_s*_f*.json); HdLoss never
+  selects 0.1. Both objectives were therefore also run at lambda = 0.3, after the
+  preregistered results were known (2026-11-18, scripts/prospective.sh). No WBM data
+  entered this choice. The new arms fine-tune the same stage-one checkpoints as the
+  preregistered ones (identical MD5 sums), and refitting the control from them
+  reproduced its predictions exactly, so all arms remain paired with one control.
+- The manuscript reports the lambda = 0.3 arms. The runs at the preregistered lambda
+  stay in results/wbm/prospective_summary.csv and in the Zenodo archive; their
+  conclusions are the same.

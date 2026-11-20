@@ -2,22 +2,25 @@
 
 Both figures use the training curves of the prospective test, in which one
 model per seed is fine-tuned on all compounds of the 2025 MP snapshot with
-lambda fixed in advance. Curves are means over the five seeds, shaded bands
-the sample standard deviation.
+lambda of the nested cross-validation. Curves are means over the five seeds,
+shaded bands the sample standard deviation.
 
-Figure S1 (iiLoss, lambda = 0.2)
+Figure S1 (iiLoss, lambda = 0.3; naive penalty at its lambda of 0.2)
     (a) MSE(dfH) / Var(dfH_DFT) for the control, iiLoss and the naive penalty
     (b) interference term relative to its value for the initial model
     (c) gauge share of the training residual for iiLoss
 
-Figure S2 (HdLoss, lambda = 0.1)
+Figure S2 (HdLoss, lambda = 0.3)
     (a) MSE(dfH) / Var(dfH_DFT) for the control and HdLoss
     (b) MSE(dHd) relative to its value for the initial model
 
 The curves are written by the prospective runs (scripts/prospective.sh) as
 runs_wbm/curves/<loss>_<lam>_s<seed>.csv and are copied to data/wbm/curves.
-File stems: mse_0 = control, iiperpfrozen_0.2 = iiLoss (gauge-free, frozen
-scales), iiloss_0.2 = naive <xi^2> penalty, hdloss_0.1 = HdLoss.
+File stems: mse_0 = control, iiperpfrozen_<lam> = iiLoss (gauge-free, frozen
+scales), iiloss_0.2 = naive <xi^2> penalty, hdloss_<lam> = HdLoss. The runs at
+lam = 0.3 (the value the nested cross-validation selects most often) fine-tune
+the same stage-one checkpoints as the first runs at the lam of the preprint
+(iiperpfrozen_0.2, hdloss_0.1), whose curves remain in data/wbm/curves.
 
 Usage
 -----
@@ -64,12 +67,12 @@ _COL_REF = "#000000"
 SERIES = {
     "control": dict(stem="mse_0", color=_COL_REF, lw=1.2, ls="-", alpha=0.8,
                     label=r"control ($\lambda\!=\!0$)"),
-    "iiLoss": dict(stem="iiperpfrozen_0.2", color=_COL_II, lw=1.8, ls="-",
-                   alpha=1.0, label=r"iiLoss ($\lambda\!=\!0.2$)"),
+    "iiLoss": dict(stem="iiperpfrozen_0.3", color=_COL_II, lw=1.8, ls="-",
+                   alpha=1.0, label=r"iiLoss ($\lambda\!=\!0.3$)"),
     "naive": dict(stem="iiloss_0.2", color=_COL_II, lw=1.2, ls="--", alpha=0.55,
                   label=r"naive $\langle\xi^2\rangle$ ($\lambda\!=\!0.2$)"),
-    "HdLoss": dict(stem="hdloss_0.1", color=_COL_HD, lw=1.8, ls="-", alpha=1.0,
-                   label=r"HdLoss ($\lambda\!=\!0.1$)"),
+    "HdLoss": dict(stem="hdloss_0.3", color=_COL_HD, lw=1.8, ls="-", alpha=1.0,
+                   label=r"HdLoss ($\lambda\!=\!0.3$)"),
 }
 
 # objective -> (series in panel a, series in panel b, ylabel b, gauge panel)

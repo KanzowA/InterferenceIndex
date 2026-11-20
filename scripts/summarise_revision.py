@@ -11,7 +11,8 @@ Sections
     eps          the denominator stabiliser at lam = 0.2
     selection    lam chosen on the validation split, per objective and width
     capacity     the nested runs against the control at every base width
-    prospective  the preregistered comparisons on the WBM discovery set
+    prospective  the comparisons on the WBM discovery set, at the lambda the
+                 nested cross-validation selects most often
 
 Every comparison is paired by seed: the relative change is averaged over seeds,
 "k/n" counts the seeds in which the run beats its control, and p is a paired
@@ -53,7 +54,7 @@ NESTED_METRICS = ["MAE_f", "MAE_d", "xi_rms", "Xi2_Q", "p_gauge", "frac_xi_lt1",
                   "F1", "precision", "recall", "maxF1", "ROC_AUC", "PR_AUC", "MCC",
                   "mlhull_F1", "mlhull_precision", "mlhull_recall", "mlhull_DAF",
                   "mlhull_MAE_hd"]
-PROSPECTIVE_RUNS = ["iiLoss_finetune_0.2", "iiLossRaw_finetune_0.2", "HdLoss_finetune_0.1"]
+PROSPECTIVE_RUNS = ["iiLoss_finetune_0.3", "HdLoss_finetune_0.3", "iiLossRaw_finetune_0.2"]
 PROSPECTIVE_METRICS = ["MAE_f_wbm", "uniq_MAE_hull", "uniq_F1", "uniq_DAF",
                        "uniq_precision", "uniq_recall", "uniq_ROC_AUC", "uniq_PR_AUC",
                        "full_F1", "full_DAF", "closed_MAE_d", "closed_xi_rms",
@@ -173,9 +174,10 @@ def section_prospective(df):
         rows = paired(df, run, CONTROL, PROSPECTIVE_METRICS)
         show(rows, f"WBM: {run} against {CONTROL}")
         out += rows
-    rows = paired(df, "iiLoss_finetune_0.2", "HdLoss_finetune_0.1",
-                  ["closed_MAE_d", "MAE_f_wbm", "uniq_F1", "uniq_MAE_hull", "uniq_ROC_AUC"])
-    show(rows, "WBM: iiLoss_finetune_0.2 against HdLoss_finetune_0.1 (H4)")
+    head = ["closed_MAE_d", "MAE_f_wbm", "uniq_F1", "uniq_MAE_hull", "uniq_ROC_AUC",
+            "closed_F1"]
+    rows = paired(df, "iiLoss_finetune_0.3", "HdLoss_finetune_0.3", head)
+    show(rows, "WBM: iiLoss_finetune_0.3 against HdLoss_finetune_0.3")
     return out + rows
 
 

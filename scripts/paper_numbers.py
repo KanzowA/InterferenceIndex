@@ -460,7 +460,7 @@ def section_prospective():
     print("\nProspective test on WBM")
     df = split_seed(pd.read_csv(os.path.join(RESULTS, "wbm", "prospective_summary.csv")))
     c = "iiLoss_finetune_0.0"
-    for stem in ("iiLoss_finetune_0.2", "iiLossRaw_finetune_0.2", "HdLoss_finetune_0.1"):
+    for stem in ("iiLoss_finetune_0.3", "HdLoss_finetune_0.3", "iiLossRaw_finetune_0.2"):
         for k in ("closed_MAE_d", "MAE_f_wbm", "uniq_F1", "uniq_DAF", "uniq_precision",
                   "uniq_recall", "uniq_MAE_hull", "uniq_ROC_AUC", "full_F1", "closed_Xi2_Q",
                   "closed_F1", "novel_MAE_hull", "novel_DAF", "novel_F1", "closed_novel_MAE_d",

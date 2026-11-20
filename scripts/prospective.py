@@ -18,8 +18,8 @@ format of Matbench Discovery,
 
     data/wbm/ml/<model>[_w<width>]_s<seed>.csv.gz    material_id, e_form_per_atom
 
-The hypotheses, the runs and the metrics were registered before any of these
-runs started; see the revision's PREREGISTRATION.
+lam is the value the nested cross-validation selects most often (0.3 for iiLoss
+and HdLoss, 0.2 for iiLossRaw); see scripts/prospective.sh.
 """
 
 import json

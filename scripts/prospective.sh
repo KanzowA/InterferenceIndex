@@ -6,8 +6,9 @@
 #
 # lam is the value the nested cross-validation selects most often, which is also
 # the median of its 25 seed/fold choices (results/2025/nested/selection_*.json):
-# 0.3 for iiLoss and HdLoss, 0.2 for the naive iiLossRaw. The preregistered arms
-# (iiLoss 0.2, HdLoss 0.1; docs/PREREGISTRATION.md) are kept and reported in the SI.
+# 0.3 for iiLoss and HdLoss, 0.2 for the naive iiLossRaw. The first runs, at the
+# lam of the preprint (iiLoss 0.2, HdLoss 0.1), are documented in
+# docs/PREREGISTRATION.md; their predictions are in the Zenodo archive.
 #
 # Every stage-two run of a seed fine-tunes the same stage-one checkpoint, so the
 # arms are paired with their control. Stage one is therefore skipped whenever its
@@ -25,7 +26,7 @@ set -u
 SEEDS=("$@")
 [[ ${#SEEDS[@]} -eq 0 ]] && SEEDS=(0 1 2 3 4)
 WBM=data/wbm/2023-12-13-wbm-summary.csv.gz
-WBM_URL=https://github.com/janosh/matbench-discovery/raw/main/data/wbm/2023-12-13-wbm-summary.csv.gz
+WBM_MD5=ae071b0918fe011e3ef63303f10338be   # of the unpacked content
 
 source "$(dirname "$0")/_job_common.sh"
 
@@ -34,16 +35,15 @@ log "============================================================"
 log "  Prospective WBM test: seeds ${SEEDS[*]}"
 log "  Python: $PYTHON ($($PYTHON --version 2>&1))"
 check_hull
-if [[ ! -f "$WBM" ]]; then
-    mkdir -p data/wbm
-    curl -sSL -o "$WBM" "$WBM_URL"
-    gzip -t "$WBM" || { log "ERROR: WBM summary download failed"; rm -f "$WBM"; exit 1; }
+if [[ ! -f "$WBM" ]] || [[ "$(zcat "$WBM" 2>/dev/null | md5sum | cut -d' ' -f1)" != "$WBM_MD5" ]]; then
+    log "ERROR: $WBM is missing or not the Matbench Discovery WBM summary."
+    log "       Get it from https://figshare.com/articles/dataset/22715158 (see README)."
+    exit 1
 fi
 log "  Started: $(date)"
 log "============================================================"
 
-ARMS=(iiLoss_finetune_0.0 iiLoss_finetune_0.3 HdLoss_finetune_0.3 iiLossRaw_finetune_0.2
-      iiLoss_finetune_0.2 HdLoss_finetune_0.1)
+ARMS=(iiLoss_finetune_0.0 iiLoss_finetune_0.3 HdLoss_finetune_0.3 iiLossRaw_finetune_0.2)
 
 for SEED in "${SEEDS[@]}"; do
     CKPT="checkpoints/prospective/s${SEED}/Hf_fold0_w1024_seed${SEED}.pt"

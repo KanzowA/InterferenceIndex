@@ -50,8 +50,9 @@ This branch holds the revised manuscript. What changed, and why:
   reaction-based metrics, as are max-F1, ROC-AUC, PR-AUC, MCC and the
   gauge-fixed index Ξ²_Q.
 - **A prospective test.** One model per seed is trained on all of MP and
-  predicts the 257k materials of the WBM discovery set, under hypotheses
-  registered before the runs (`docs/PREREGISTRATION.md`).
+  predicts the 257k materials of the WBM discovery set, at the λ the nested
+  cross-validation selects most often (0.3 for iiLoss and HdLoss). The first
+  runs, at the λ of the preprint, are documented in `docs/PREREGISTRATION.md`.
 - **The Matbench Discovery models.** The diagnostic is applied to the published
   predictions of 67 models, 57 of them interatomic potentials, on a closed WBM
   hull.
@@ -71,7 +72,7 @@ preprint, in `results/paper_numbers.md`, written by `scripts/paper_numbers.py`.
 │   ├── 2026/                    # MP snapshot from 2026/05/27, the preprint's data
 │   └── wbm/                     # WBM discovery set: closed hull, model manifest, predictions
 ├── checkpoints/                 # Stage-one weights (from Zenodo)
-├── docs/                        # Nested protocol and preregistration of the prospective test
+├── docs/                        # Nested protocol; first protocol of the prospective test
 ├── results/                     # Scores, summaries, paper_numbers.md
 ├── figures/                     # Paper and SI figures
 ├── models/
@@ -85,7 +86,7 @@ preprint, in `results/paper_numbers.md`, written by `scripts/paper_numbers.py`.
     ├── nested.sh                # Nested cross-validation, Table 2
     ├── capacity.sh              # Capacity ladder with the nested protocol
     ├── prospective.py           # Train on all of MP, predict WBM
-    ├── prospective.sh           # The preregistered prospective runs
+    ├── prospective.sh           # The prospective runs
     ├── sweep.sh                 # Full sweep over lambda and variant
     ├── interference_score.py    # Score predictions, writes results/
     ├── spectral.py              # Shared scoring machinery (structure matrix, gauge, LP hull)
@@ -161,13 +162,12 @@ tar xzf predictions_2025.tar.gz
 tar xzf predictions_wbm.tar.gz
 ```
 
-The WBM summary comes from Matbench Discovery, and `prospective.sh` fetches it
-if it is absent:
-
-```bash
-curl -L -o data/wbm/2023-12-13-wbm-summary.csv.gz \
-  https://github.com/janosh/matbench-discovery/raw/main/data/wbm/2023-12-13-wbm-summary.csv.gz
-```
+The WBM summary, `2023-12-13-wbm-summary.csv.gz`, is part of the Matbench
+Discovery data files (figshare, https://figshare.com/articles/dataset/22715158).
+Save it as `data/wbm/2023-12-13-wbm-summary.csv.gz`; the MD5 sum of its
+unpacked content is `ae071b0918fe011e3ef63303f10338be`
+(`zcat data/wbm/2023-12-13-wbm-summary.csv.gz | md5sum`), and `prospective.sh`
+stops if it differs.
 
 The published predictions of the Matbench Discovery models are listed with
 their figshare links and MD5 sums in `data/wbm/mbd_manifest.csv`; save each as
